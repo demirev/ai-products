@@ -14,7 +14,7 @@ all_categories = [
   "general-business",
   # science and tech
   "consumer-technology",
-  "energy"
+  "energy",
   "environment",
   "heavy-industry-manufacturing",
   "telecommunications",
@@ -109,7 +109,8 @@ def scrape_all_links(
     links = scrape_category_links_period(
       category=category, 
       start_date=start_date, 
-      end_date=end_date
+      end_date=end_date,
+      output_dir=dir_path
     )
     file_name = f"{dir_path}/links_{start_date}_{end_date}.txt"
     with open(file_name, "w") as file:
@@ -122,7 +123,8 @@ def scrape_category_links_period(
   category,
   base_url = "https://www.prnewswire.com/news-releases",
   start_date = "2024-02-05",
-  end_date = "2024-02-05"
+  end_date = "2024-02-05",
+  output_dir = None
 ):
   hrefs = []
   start_date = datetime.strptime(start_date, "%Y-%m-%d")
@@ -130,11 +132,19 @@ def scrape_category_links_period(
   this_date = start_date
   while this_date <= end_date:
     date_str = this_date.strftime("%Y-%m-%d")
-    new_hrefs = scrape_category_links_day(
-      category=category, 
-      base_url=base_url, 
-      date=date_str
-    )
+    # try to scrape links for this date, if not possible, skip
+    try:
+      new_hrefs = scrape_category_links_day(
+        category=category, 
+        base_url=base_url, 
+        date=date_str,
+        output_dir=output_dir
+      )
+    except ScrapingError as e:
+      print(f"Failed to scrape links for {date_str}: {e}")
+      this_date += timedelta(days=1)
+      continue
+
     hrefs = hrefs + new_hrefs
     hrefs = list(set(hrefs))
     this_date += timedelta(days=1)
@@ -144,7 +154,8 @@ def scrape_category_links_day(
   category, 
   base_url = "https://www.prnewswire.com/news-releases", 
   date = "2024-02-05",
-  n_pages = 15
+  n_pages = 15,
+  output_dir = None
 ):
   hrefs = []
   category_url = f"{base_url}/{category}-latest-news/{category}-latest-news-list/"
@@ -158,6 +169,13 @@ def scrape_category_links_day(
     hrefs = hrefs + scrape_links_on_page(page_url)
   
   hrefs = list(set(hrefs)) # remove duplicates
+
+  if output_dir is not None:
+    os.makedirs(output_dir, exist_ok=True)
+    file_name = f"{output_dir}/links_{date}.txt"
+    with open(file_name, "w") as file:
+      for link in hrefs:
+        file.write(link + "\n")
   
   return hrefs
 
@@ -180,10 +198,14 @@ parser.add_argument("--no-links", action="store_true", help="skip scraping links
 parser.add_argument("--no-articles", action="store_true", help="skip scraping articles")
 parser.add_argument("--start-date", type=str, help="the start date for scraping links in YYYY-MM-DD format")
 parser.add_argument("--end-date", type=str, help="the end date for scraping links in YYYY-MM-DD format")
+parser.add_argument("--categories", type=str, help="comma separated list of categories")
 
 args = parser.parse_args()
 
 if __name__ == "__main__":
+  print("Starting")
+  print(datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+
   if args.start_date and args.end_date:
     start_date = args.start_date
     end_date = args.end_date
@@ -191,24 +213,25 @@ if __name__ == "__main__":
     end_date = datetime.today().strftime("%Y-%m-%d")
     start_date = (datetime.today() - timedelta(180)).strftime("%Y-%m-%d")
 
-  # run scrape_all_links with current date as end_date and start_date six months ago
-  end_date = datetime.today().strftime("%Y-%m-%d")
-  start_date = (datetime.today() - timedelta(180)).strftime("%Y-%m-%d")
-  
+  if args.categories:
+    categories = args.categories.split(",")
+  else:
+    categories = all_categories
+
   if not args.no_links:
     scrape_all_links(
-      categories=all_categories,
-      output_dir="../data/links",
+      categories=categories,
+      output_dir="data/links",
       start_date=start_date, 
       end_date=end_date
     )
   
   if not args.no_articles:
     scrape_all_articles(
-      categories=all_categories, 
-      input_dir="../data/links", 
-      output_parent_dir="../data/articles"
+      categories=categories, 
+      input_dir="data/links", 
+      output_parent_dir="data/articles"
     )
-  # print done + timestamp
+  
   print(datetime.now().strftime("%Y-%m-%d %H:%M:%S"))  
   print("Done")
