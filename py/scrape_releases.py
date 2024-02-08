@@ -1,6 +1,7 @@
 import requests
 import os
 import argparse
+import random
 from datetime import datetime, timedelta
 from bs4 import BeautifulSoup
 
@@ -33,6 +34,7 @@ def scrape_all_articles(
   input_dir = "../data/links",
   output_parent_dir = "../data/articles"
 ):
+  random.shuffle(categories)
   for category in categories:
     # list all files in input_dir/category
     links = []
@@ -43,12 +45,16 @@ def scrape_all_articles(
         links = links + file.readlines()
     links = list(set(links)) # remove duplicates
     links = [link.strip() for link in links]
+    # randomize the order of links
+    random.shuffle(links)
     print(f"Scraping {len(links)} articles for {category}")
 
     output_dir = f"{output_parent_dir}/{category}"
     os.makedirs(output_dir, exist_ok=True)
     existing_links = [link.split("/")[-1].split(".")[0] for link in os.listdir(output_dir)]
     links = [link for link in links if link.split("/")[-1].split(".")[0] not in existing_links]
+    
+    print(f"{len(links)} remaining articles for {category}")
     scrape_and_save_articles(links, output_dir)
   return True
 
@@ -58,7 +64,11 @@ def scrape_and_save_articles(
 ):
   for article_link in article_links:
     print(f"Scraping {article_link}")
-    article = scrape_article(article_link, prefix = "https://www.prnewswire.com")
+    try:
+      article = scrape_article(article_link, prefix = "https://www.prnewswire.com")
+    except Exception as e:
+      print(f"Failed to scrape {article_link}: {e}")
+      continue
     # remove .html from article_link
     file_name = f"{output_dir}/{article_link.split('/')[-1].split('.')[0]}.json"
     with open(file_name, "w") as file:
@@ -140,7 +150,7 @@ def scrape_category_links_period(
         date=date_str,
         output_dir=output_dir
       )
-    except ScrapingError as e:
+    except Exception as e:
       print(f"Failed to scrape links for {date_str}: {e}")
       this_date += timedelta(days=1)
       continue
