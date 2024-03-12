@@ -245,7 +245,7 @@ if __name__ == "__main__":
       adoption_phrases, "adoption_similarity",
       overwirte=False
     )
-    save_list_to_csv(relevant_press_releases, file_name, append=True)
+    save_list_to_csv(relevant_press_releases, file_name)
   
   print(datetime.now().strftime("%Y-%m-%d %H:%M:%S"))  
   print("Done")
