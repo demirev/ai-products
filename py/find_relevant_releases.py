@@ -6,16 +6,12 @@ import csv
 import argparse
 from datetime import datetime, timedelta
 
-# Define the path to the directory containing the articles
 articles_path = "data/articles"
 
-# Load the medium model with word vectors
 nlp = spacy.load("en_core_web_lg")
 
-# Define your AI-related search query
 search_query = nlp("AI product launch adoption new technology")
 
-# Define lemmatized keywords to search for in the press releases
 keywords = [
   "artificial intelligence", "AI", 
   # "launch", "adopt", "introduce", "release"
@@ -88,7 +84,7 @@ def count_keyphrases(content, keyphrases):
   return sum(found_keyphrases.values())
 
 
-def calculate_semantic_similarity(text, search_queries):
+def calculate_semantic_similarity(text, search_queries, nlp = nlp):
   """Calculate the semantic similarity between the text and the search queries."""
   doc = nlp(text)
   similarities = [doc.similarity(nlp(sq)) for sq in search_queries]

@@ -6,6 +6,7 @@ import os
 
 def fetch_data(timestamp):
   url = f'https://europa.eu/eures/eures-apps/searchengine/page/statistics/getMostRequiredOccupationStats?lang=en&_={timestamp}&app=2.17.1-build-1'
+  print(f"Fetching data from {url}")
   response = requests.get(url)
   return response.json()
 
@@ -13,7 +14,7 @@ def add_months(source_date, months):
   month = source_date.month - 1 + months
   year = source_date.year + month // 12
   month = month % 12 + 1
-  day = 5 # always use the 5th day of the month
+  day = 1 # always use the 1st day of the month
   return datetime(year, month, day)
 
 def main(start_date, end_date, output_file, overwrite):
@@ -42,10 +43,10 @@ def main(start_date, end_date, output_file, overwrite):
       current_date = add_months(current_date, 1)
 
 parser = argparse.ArgumentParser(description='Fetch data from EURES and save to CSV')
-parser.add_argument('--start_date', type=str, help='Start date in YYYY-MM-DD format', required=True)
-parser.add_argument('--end_date', type=str, help='End date in YYYY-MM-DD format', required=True)
-parser.add_argument('--output_file', default='data/eures_data.csv', type=str, help='Output CSV file path', required=False)
-parser.add_argument('--overwrite', default=False, action='store_true', help='Overwrite the file if it exists', required=False)
+parser.add_argument('--start-date', type=str, help='Start date in YYYY-MM-DD format', required=True)
+parser.add_argument('--end-date', type=str, help='End date in YYYY-MM-DD format', required=True)
+parser.add_argument('--output-file', default='data/eures_data.csv', type=str, help='Output CSV file path', required=False)
+parser.add_argument('--overwrite', default=True, action='store_true', help='Overwrite the file if it exists', required=False)
 args = parser.parse_args()
 
 if __name__ == "__main__":
