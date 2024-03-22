@@ -3,7 +3,7 @@ import json
 import spacy
 import random
 import argparse
-from py.find_relevant_releases import replace_quotes, read_list_from_csv, calculate_semantic_similarity, save_list_to_csv
+from find_relevant_releases import replace_quotes, read_list_from_csv, calculate_semantic_similarity, save_list_to_csv
 from datetime import datetime
 from dotenv import load_dotenv
 from openai import OpenAI
@@ -11,8 +11,6 @@ from openai import OpenAI
 load_dotenv()
 
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-
-articles_path = "data/articles"
 
 capability_phrases = [
   "Our AI-powered solution is capable of",
@@ -65,7 +63,7 @@ def extract_verb_subject_noun_pairs(text, nlp=nlp):
   return verb_subject_noun_pairs
 
 
-def read_random_article(articles_path = articles_path, scored_relaese_path = "data/relevant_releases.csv"):
+def read_random_article(articles_path = "data/articles", scored_relaese_path = "data/relevant_releases.csv"):
   # Selects a random file from articles_path and reads it. Used for testing extract_verb_noun_pairs
   if scored_relaese_path is None:
     all_dirs = os.listdir(articles_path)
@@ -209,48 +207,49 @@ def extract_capability_strings_for_all_releases(
   return scored_releases
 
 # Example usage
-test_cases = find_relevant_sentences_for_all_releases(
-  read_list_from_csv("data/relevant_releases.csv"),
-  threshold_release=0.7, threshold_sentence=0.8
-)
-sum([len(" ".join(rl.get('relevant_sentences','')).split()) for rl in test_cases])
-save_list_to_csv(test_cases, "data/processed_press_releases.csv", append=False)
-test_cases_gpt = extract_capability_strings_for_all_releases(
-  test_cases, 
-  sysprompt=open("py/extract_capability_prompt.txt", "r").read(),
-  client=client,
-  file_name="data/llm_checkpoint.csv"
-)
-read_list_from_csv("data/llm_checkpoint.csv")
-save_list_to_csv(test_cases_gpt, "data/processed_press_releases.csv", append=False)
+# test_cases = find_relevant_sentences_for_all_releases(
+#   read_list_from_csv("data/relevant_releases.csv"),
+#   threshold_release=0.7, threshold_sentence=0.8
+# )
+# sum([len(" ".join(rl.get('relevant_sentences','')).split()) for rl in test_cases])
+# save_list_to_csv(test_cases, "data/processed_press_releases.csv", append=False)
+# test_cases_gpt = extract_capability_strings_for_all_releases(
+#   test_cases, 
+#   sysprompt=open("py/extract_capability_prompt.txt", "r").read(),
+#   client=client,
+#   file_name="data/llm_checkpoint.csv"
+# )
+# read_list_from_csv("data/llm_checkpoint.csv")
+# save_list_to_csv(test_cases_gpt, "data/processed_press_releases.csv", append=False)
 
-text = read_random_article()
-print(extract_verb_noun_pairs(text))
-print(extract_verb_subject_noun_pairs(text))
-
-parser = argparse.ArgumentParser(
-  description="Extract verb-noun pairs from AI-related press releases"
-)
-parser.add_argument(
-  "--no-shortening", action="store_true", help="skip selecting relevant sentences"
-)
-parser.add_argument(
-  "--no-llm", action="store_true", help="skip capability extraction via LLM"
-)
-parser.add_argument(
-  "--input-file", type=str, help="name of file to read press releases from",
-  default="data/relevant_releases.csv"
-)
-parser.add_argument(
-  "--file-name", type=str, help="name of file to save results"
-)
-parser.add_argument(
-  "--llm-checkpoint", type=str, help="name of file to save checkpoint results"
-)
-
-args = parser.parse_args()
+# text = read_random_article()
+# print(extract_verb_noun_pairs(text))
+# print(extract_verb_subject_noun_pairs(text))
 
 if __name__ == "__main__":
+
+  parser = argparse.ArgumentParser(
+    description="Extract verb-noun pairs from AI-related press releases"
+  )
+  parser.add_argument(
+    "--no-shortening", action="store_true", help="skip selecting relevant sentences"
+  )
+  parser.add_argument(
+    "--no-llm", action="store_true", help="skip capability extraction via LLM"
+  )
+  parser.add_argument(
+    "--input-file", type=str, help="name of file to read press releases from",
+    default="data/relevant_releases.csv"
+  )
+  parser.add_argument(
+    "--file-name", type=str, help="name of file to save results"
+  )
+  parser.add_argument(
+    "--llm-checkpoint", type=str, help="name of file to save checkpoint results"
+  )
+
+  args = parser.parse_args()
+
   print("Starting")
   print(datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
 

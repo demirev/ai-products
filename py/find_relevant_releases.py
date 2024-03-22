@@ -189,25 +189,25 @@ def score_press_release_similarity(press_releases, phrases, field_name, overwirt
       print(f"Processed {current_index} press releases")
   return press_releases
 
-
-parser = argparse.ArgumentParser(
-  description="A script to find AI-related press releases"
-)
-parser.add_argument(
-  "--no-keywords", action="store_true", help="skip keyword filtering"
-)
-parser.add_argument(
-  "--no-semantic", action="store_true", help="skip semantic similarity"
-)
-parser.add_argument(
-  "--file-name", type=str, help="name of file to save results"
-)
-
-args = parser.parse_args()
-
 if __name__ == "__main__":
   print("Starting")
   print(datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+
+  parser = argparse.ArgumentParser(
+    description="A script to find AI-related press releases"
+  )
+  parser.add_argument(
+    "--no-keywords", action="store_true", help="skip keyword filtering"
+  )
+  parser.add_argument(
+    "--no-semantic", action="store_true", help="skip semantic similarity"
+  )
+  parser.add_argument(
+    "--file-name", type=str, help="name of file to save results"
+  )
+
+  args = parser.parse_args()
+
 
   # if no file name is provided, use the default name
   file_name = args.file_name if args.file_name else "data/relevant_press_releases.csv"
