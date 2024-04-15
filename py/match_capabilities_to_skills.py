@@ -95,9 +95,12 @@ def cosine_similarity_np(v1, v2):
   # Calculate norms of each vector
   norms_v1 = np.linalg.norm(vectors1, axis=1)
   norms_v2 = np.linalg.norm(vectors2, axis=1)
+  norms_product = norms_v1 * norms_v2
   
-  # Calculate cosine similarity for each pair
-  cosine_similarities = dot_products / (norms_v1 * norms_v2)
+  # avoid division by zero
+  valid_indices = norms_product != 0
+  cosine_similarities = np.zeros_like(dot_products, dtype=float)
+  cosine_similarities[valid_indices] = dot_products[valid_indices] / norms_product[valid_indices]
   
   return cosine_similarities
 
@@ -168,14 +171,17 @@ def calculate_all_similarity_scores_batched(
     
     # Use the batch cosine similarity function
     cosine_similarities = cosine_similarity_np(capability_vectors, repeated_skill_vector)
+    #all_capabilities = all_capabilities[np.isfinite(cosine_similarities)]
+    #cosine_similarities = cosine_similarities[np.isfinite(cosine_similarities)]
 
     # Store the results
     similarity_scores.append({
       'esco_skill_label': skill.get('preferredLabel', ''),
       'esco_skill_uri': skill.get('conceptUri', ''),
-      'max_similarity': np.max(cosine_similarities), 
+      'max_similarity': np.nanmax(cosine_similarities), 
       'n_similar': np.sum(cosine_similarities > threshold),
-      'mean_similarity': np.mean(cosine_similarities)
+      'mean_similarity': np.nanmean(cosine_similarities),
+      'max_similarity_capability': all_capabilities[np.nanargmax(cosine_similarities)]
     })
     for j, capability in enumerate(all_capabilities):
       this_score = {
@@ -251,9 +257,13 @@ if __name__ == "__main__":
     )
 
   if not args.no_similarity:
+    # if checkpoint file is specified, delete it
+    if args.checkpoint_file is not None and os.path.exists(args.checkpoint_file):
+      os.remove(args.checkpoint_file)
+
     # calculate pairwise similarity
     scored_skills = calculate_all_similarity_scores_batched(
-      all_capabilities, esco_skills, threshold=0.7, nlp=nlp,
+      all_capabilities, esco_skills, threshold=0.9, nlp=nlp,
       checkpoint_file=args.checkpoint_file, capability_vectors=capability_vectors
     )
 
