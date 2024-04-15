@@ -131,8 +131,10 @@ logs/
 
 # Data
 data/
+checkpoints/
 
 # Others
 .DS_Store
 Thumbs.db
 .Rproj.user
+
