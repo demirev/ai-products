@@ -202,7 +202,7 @@ if __name__ == "__main__":
   parser.add_argument(
     "--capabilities-input-file", 
     type=str, 
-    default="data/processed_press_releases.csv",
+    default="results/processed_press_releases.csv",
     help="Path to the file containing the product capabilities"
   )
   parser.add_argument(
@@ -213,20 +213,25 @@ if __name__ == "__main__":
   )
   parser.add_argument(
     "--skills-output-file", type=str, help="Path to the output file",
-    default="data/scored_esco_skills.csv"
+    default="results/scored_esco_skills.csv"
   )
   parser.add_argument(
     "--capabilities-output-file", type=str, help="Path to the output file",
-    default="data/scored_ai_capabilities.csv"
-  )
+    default="results/scored_ai_capabilities.csv" 
+  ) # TODO this is not currently used, delete possibly
   parser.add_argument(
     "--capability-vector-file", type=str, 
     help="Path to the file containing the capability vectors",
-    default="data/capability_vectors.csv"
+    default="checkpoints/capability_vectors.csv"
+  )
+  parser.add_argument(
+    "--skill-vector-file", type=str, 
+    help="Path to the file containing the skills vectors",
+    default="checkpoints/skill_vectors.csv"
   )
   parser.add_argument(
     "--checkpoint-file", type=str, help="Path to the checkpoint file",
-    default="data/scored_esco_skills_checkpoint.csv"
+    default="checkpoints/scored_esco_skills_checkpoint.csv"
   )
   parser.add_argument(
     "--no-similarity", action="store_true", help="Do not calculate similarity scores",
@@ -265,6 +270,13 @@ if __name__ == "__main__":
     scored_skills = calculate_all_similarity_scores_batched(
       all_capabilities, esco_skills, threshold=0.9, nlp=nlp,
       checkpoint_file=args.checkpoint_file, capability_vectors=capability_vectors
+    )
+
+  if args.skill_vector_file is not None:
+    skill_vectors = np.array([find_mean_text_vector(skill.get('preferredLabel', '') + " " + skill.get('description', '') + " " + skill.get('altLabels', ''), nlp) for skill in esco_skills])
+    save_list_to_csv(
+      [{'skill': skill, 'vector': vector} for skill, vector in zip(esco_skills, skill_vectors)],
+      args.skill_vector_file, append=False
     )
 
     # save results

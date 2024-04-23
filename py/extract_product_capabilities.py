@@ -188,6 +188,7 @@ def extract_capability_strings_for_all_releases(
     i += 1
     print(f"processing release {i} of {len(scored_releases)}")
     if 'capability_string' in release and release['capability_string'] != '':
+      print("capability string already exists")
       continue
     content = release.get('relevant_sentences', '')
     content = " ".join(content)
@@ -239,13 +240,15 @@ if __name__ == "__main__":
   )
   parser.add_argument(
     "--input-file", type=str, help="name of file to read press releases from",
-    default="data/relevant_releases.csv"
+    default="results/relevant_releases.csv"
   )
   parser.add_argument(
-    "--file-name", type=str, help="name of file to save results"
+    "--file-name", type=str, help="name of file to save results",
+    default="results/processed_press_releases.csv"
   )
   parser.add_argument(
-    "--llm-checkpoint", type=str, help="name of file to save checkpoint results"
+    "--llm-checkpoint", type=str, help="name of file to save checkpoint results",
+    default="checkpoints/llm_checkpoint.csv"
   )
 
   args = parser.parse_args()
@@ -254,8 +257,8 @@ if __name__ == "__main__":
   print(datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
 
   # if no file name is provided, use the default name
-  file_name = args.file_name if args.file_name else "data/processed_press_releases.csv"
-  checkpoint_file = args.llm_checkpoint if args.llm_checkpoint else "data/llm_checkpoint.csv"
+  file_name = args.file_name if args.file_name else "results/processed_press_releases.csv"
+  checkpoint_file = args.llm_checkpoint if args.llm_checkpoint else "checkpoints/llm_checkpoint.csv"
 
   if not args.no_shortening:
     processed_releases = find_relevant_sentences_for_all_releases(

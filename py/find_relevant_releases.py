@@ -203,14 +203,15 @@ if __name__ == "__main__":
     "--no-semantic", action="store_true", help="skip semantic similarity"
   )
   parser.add_argument(
-    "--file-name", type=str, help="name of file to save results"
+    "--file-name", type=str, help="name of file to save results",
+    default="results/relevant_press_releases.csv"
   )
 
   args = parser.parse_args()
 
 
   # if no file name is provided, use the default name
-  file_name = args.file_name if args.file_name else "data/relevant_press_releases.csv"
+  file_name = args.file_name if args.file_name else "results/relevant_press_releases.csv"
 
   # if file exists, read the data from the file
   if os.path.exists(file_name):
