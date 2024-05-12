@@ -207,25 +207,6 @@ def extract_capability_strings_for_all_releases(
   
   return scored_releases
 
-# Example usage
-# test_cases = find_relevant_sentences_for_all_releases(
-#   read_list_from_csv("data/relevant_releases.csv"),
-#   threshold_release=0.7, threshold_sentence=0.8
-# )
-# sum([len(" ".join(rl.get('relevant_sentences','')).split()) for rl in test_cases])
-# save_list_to_csv(test_cases, "data/processed_press_releases.csv", append=False)
-# test_cases_gpt = extract_capability_strings_for_all_releases(
-#   test_cases, 
-#   sysprompt=open("py/extract_capability_prompt.txt", "r").read(),
-#   client=client,
-#   file_name="data/llm_checkpoint.csv"
-# )
-# read_list_from_csv("data/llm_checkpoint.csv")
-# save_list_to_csv(test_cases_gpt, "data/processed_press_releases.csv", append=False)
-
-# text = read_random_article()
-# print(extract_verb_noun_pairs(text))
-# print(extract_verb_subject_noun_pairs(text))
 
 if __name__ == "__main__":
 
@@ -261,6 +242,7 @@ if __name__ == "__main__":
   checkpoint_file = args.llm_checkpoint if args.llm_checkpoint else "checkpoints/llm_checkpoint.csv"
 
   if not args.no_shortening:
+    print("Reading press releases")
     processed_releases = find_relevant_sentences_for_all_releases(
       read_list_from_csv(args.input_file),
       threshold_release=0.7, 
@@ -274,6 +256,7 @@ if __name__ == "__main__":
     print(f"Processing {len(processed_releases)} press releases")
     checkpoint_releases = read_list_from_csv(checkpoint_file)
 
+    found_in_chkp = 0
     for release in processed_releases:
       if release['header'] in [item['header'] for item in checkpoint_releases]:
         release.update({
@@ -281,13 +264,14 @@ if __name__ == "__main__":
             item['capability_string'] for item in checkpoint_releases if item['header'] == release['header']
           )
         }) # adds previous results if run was interrupted
+        found_in_chkp += 1
+    print(f"Found {found_in_chkp} releases in checkpoint file")
     
     processed_releases = extract_capability_strings_for_all_releases(
       processed_releases, 
       sysprompt=open("py/extract_capability_prompt.txt", "r").read(),
       client=client,
-      file_name=checkpoint_file,
-      append=True
+      file_name=checkpoint_file
     )
     save_list_to_csv(processed_releases, file_name) # save final results
   

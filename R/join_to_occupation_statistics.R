@@ -1,9 +1,37 @@
 library(tidyverse)
+library(ggplot2)
 
-cedefop_data <- read_csv("data/cedefop/skills_intelligence_data.csv")
-ses_coefficients <- read_csv("data/ses2018/wage_coefficients.csv")
-scored_occupations <- read_csv("results/scored_esco_occupations_matched.csv")
+# define script arguments -------------------------------------------------
+parser <- ArgumentParser()
 
+parser$add_argument(
+  "--skill_inteligence_data", 
+  type = "character",
+  help = "Path to data collected from CEDEFOP's Skill Intelligence Report", 
+  default = "data/cedefop/skills_intelligence_data.csv"
+)
+parser$add_argument(
+  "--wage_coefficients", 
+  type = "character",
+  help = "Path to wage premium coefficients collected from the SES 2018 report", 
+  default = "data/ses2018/wage_coefficients.csv"
+)
+parser$add_argument(
+  "--scored_occupations", 
+  type = "character",
+  help = "Path to scored ESCO occupations", 
+  default = "results/scored_esco_occupations_matched.csv"
+)
+
+
+# read data ---------------------------------------------------------------
+args <- parser$parse_args()
+
+cedefop_data <- read_csv(args$skill_inteligence_data)
+ses_coefficients <- read_csv(args$wage_coefficients)
+scored_occupations <- read_csv(args$scored_occupations)
+
+# process data ------------------------------------------------------------
 scored_occupations_2digit <- scored_occupations %>%
   mutate(isco_code = substr(isco_group, 1, 2)) %>%
   group_by(isco_code) %>%
@@ -90,11 +118,10 @@ scored_occupations_2digit <- scored_occupations_2digit %>%
       as.numeric()
   )
 
-library(ggplot2)
-
+# plot figures ------------------------------------------------------------
 ggplot(scored_occupations_2digit, aes(x = mean_wage_coefficient, y = ai_product_exposure_score)) +
   geom_point() +
-  geom_smooth(method = "loess") +
+  geom_smooth(method = "lm") +
   xlab("Mean wage coefficient") +
   ylab("AI product exposure score") +
   ggtitle("AI product exposure score vs. mean wage coefficient")
@@ -131,8 +158,8 @@ ggplot(scored_occupations_2digit, aes(x = percent_women, y = ai_product_exposure
 
 ggplot(scored_occupations_2digit, aes(x = percent_unemployed, y = ai_product_exposure_score)) +
   geom_point() +
-  geom_smooth(method = "loess") +
+  geom_smooth(method = "lm") +
   xlab("% Unemployed in Occupation") +
   ylab("AI product exposure score") +
-  ggtitle("AI product exposure score vs. total employment")
+  ggtitle("AI product exposure score vs. unemployment rate")
 

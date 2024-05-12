@@ -1,15 +1,71 @@
 library(tidyverse)
+library(argparse)
 
-scored_skills <- read_csv("results/scored_esco_skills.csv")
-esco_occupations <- read_csv("data/esco/occupations_en.csv")
-esco_skills <- read_csv("data/esco/skills_en.csv")
-esco_occupation_skill_mapping <- read_csv(
-  "data/esco/occupationSkillRelations_en.csv"
+# define script arguments -------------------------------------------------
+parser <- ArgumentParser()
+
+parser$add_argument(
+  "--scored_skills", 
+  type = "character",
+  help = "Path to scored skills file", 
+  default = "results/scored_esco_skills.csv"
 )
-esco_research_skills <- read_csv(
-  "data/esco/researchSkillsCollection_en.csv"
+parser$add_argument(
+  "--esco_occupations", 
+  type = "character",
+  help = "Path to esco occupations file",
+  default = "data/esco/occupations_en.csv"
+)
+parser$add_argument(
+  "--esco_skills", 
+  type = "character",
+  help = "Path to esco skills file",
+  default = "data/esco/skills_en.csv"
+)
+parser$add_argument(
+  "--esco_occupation_skill_mapping", 
+  type = "character",
+  help = "Path to esco occupation skill mapping file",
+  default = "data/esco/occupationSkillRelations_en.csv"
+)
+parser$add_argument(
+  "--esco_research_skills", 
+  type = "character",
+  help = "Path to esco research skills file",
+  default = "data/esco/researchSkillsCollection_en.csv"
+)
+parser$add_argument(
+  "--esco_skill_groups",
+  type = "character",
+  help = "Path to esco skill groups file",
+  default = "data/esco/skillGroups_en.csv"
+)
+parser$add_argument(
+  "--esco_skill_hierarchy",
+  type = "character",
+  help = "Path to esco skill to skill group relations file",
+  default = "data/esco/skillsHierarchy_en.csv"
+)
+parser$add_argument(
+  "--esco_skill_relations",
+  type = "character",
+  help = "Path to esco occupation to occupation group relations file",
+  default = "data/esco/broaderRelationsSkillPillar_en.csv"
+)
+parser$add_argument(
+  "--isco_groups",
+  type = "character",
+  help = "Path to isco groups file",
+  default = "data/isco/ISCOGroups_en.csv"
+)
+parser$add_argument(
+  "--output_dir", 
+  type = "character",
+  help = "Path to output file",
+  default = "results"
 )
 
+# define functions --------------------------------------------------------
 aggregate_score_to_occupation_level <- function(
   scored_skills,
   esco_occupation_skill_mapping,
@@ -111,8 +167,148 @@ aggregate_score_to_occupation_level <- function(
   return(res)
 }
 
+score_research_skills <- function(
+  scored_skills, esco_research_skills, return_all = F  
+) {
+  res <- scored_skills %>%
+    left_join(
+      esco_research_skills %>%
+        mutate(is_research = T) %>%
+        select(conceptUri, is_research),
+      by = c("esco_skill_uri"= "conceptUri")
+    ) %>%
+    mutate(
+      is_research = ifelse(is.na(is_research), F, is_research),
+      max_similarity_standardized = (max_similarity - mean(max_similarity))/
+        sd(max_similarity),
+      max_similarity_percentile = ecdf(max_similarity)(max_similarity)
+    ) %>%
+    select(
+      esco_skill_uri,
+      esco_skill_label,
+      max_similarity,
+      max_similarity_standardized,
+      max_similarity_percentile,
+      is_research
+    )
+  
+  if (return_all) return(res)
+  
+  res %>%
+    filter(is_research) %>%
+    arrange(desc(max_similarity))
+}
 
-# run ---------------------------------------------------------------------
+plot_research_skills <- function(
+  scored_skills, esco_research_skills
+) {
+  score_research_skills(scored_skills, esco_research_skills, return_all = T) %>%
+    ggplot(aes(x = max_similarity_standardized)) +
+    geom_density(aes(color = "All job skills"), alpha = 0.5) +  # Assign color aesthetic
+    geom_point(
+      data = . %>% filter(is_research),
+      aes(
+        x = max_similarity_standardized, y = 0, color = "Research-relevant skills"
+      ),  # Assign color aesthetic
+      size = 2
+    ) +
+    scale_color_manual(  # Define colors and labels for the legend
+      values = c("All job skills" = "black", "Research-relevant skills" = "red"),
+      labels = c("All job skills", "Research-relevant skills")
+    ) +
+    theme_minimal() +
+    labs(
+      title = "Similarity of Research Skills to AI Product Capabilities",
+      x = "AI Capability/Job Skill Similarity Score",
+      y = "Density"
+    ) +
+    theme(legend.position = "right", legend.title = element_blank()) +
+    guides(color = guide_legend(override.aes = list(
+      linetype = c("solid", "blank"),  # 'blank' makes the line disappear for the dots
+      shape = c(NA, 16)                # NA for no shape for the line, 16 for a dot
+    )))
+}
+
+aggregate_skills_to_groups <- function(
+  scored_skills, esco_skill_hierarchy, esco_skill_relations  
+) {
+  scored_skills %>%
+    mutate(
+      max_similarity_standardized = (max_similarity - mean(max_similarity))/
+        sd(max_similarity)
+    ) %>%
+    select(esco_skill_uri, max_similarity_standardized) %>%
+    left_join(
+      esco_skill_relations %>%
+        filter(broaderType == "SkillGroup") %>%
+        select(
+          skill_uri = conceptUri,
+          subgroup_uri = broaderUri
+        ),
+      by = c("esco_skill_uri" = "skill_uri")
+    ) %>%
+    left_join(
+      esco_skill_relations %>%
+        filter(broaderType == "SkillGroup") %>%
+        select(
+          subgroup_uri = conceptUri,
+          group_uri = broaderUri
+        ),
+      by = c("subgroup_uri")
+    ) %>%
+    left_join(
+      esco_skill_relations %>%
+        filter(broaderType == "SkillGroup") %>%
+        select(
+          group_uri = conceptUri,
+          supergroup_uri = broaderUri
+        ),
+      by = c("group_uri")
+    ) %>%
+    left_join(
+      esco_skill_hierarchy %>%
+        select(
+          level_3_uri, 
+          subgroup_label = level_3_preferred_term,
+          group_label = level_2_preferred_term,
+          supergroup_label = level_1_preferred_term
+        ),
+      by = c("subgroup_uri" = "level_3_uri")
+    ) 
+}
+
+
+# read data ---------------------------------------------------------------
+args <- parser$parse_args()
+
+scored_skills <- read_csv(args$scored_skills)
+esco_occupations <- read_csv(args$esco_occupations)
+esco_skills <- read_csv(args$esco_skills)
+esco_occupation_skill_mapping <- read_csv(
+  args$esco_occupation_skill_mapping
+)
+esco_research_skills <- read_csv(
+  args$esco_research_skills
+)
+esco_skill_groups <- read_csv(args$esco_skill_groups)
+esco_skill_hierarchy <- read_csv(args$esco_skill_hierarchy)
+esco_skill_relations <- read_csv(args$esco_skill_relations)
+isco_groups <- read_csv(args$isco_groups)
+
+esco_skill_hierarchy <- esco_skill_hierarchy %>%
+  rename_all(~ tolower(gsub(" ", "_", .))) %>%
+  filter(!is.na(level_3_uri)) # only keep the most detailed level
+
+
+# find skill groups -------------------------------------------------------
+scored_skill_groups <- aggregate_skills_to_groups(
+  scored_skills,
+  esco_skill_hierarchy,
+  esco_skill_relations
+)
+
+
+# aggregate occupation scores ---------------------------------------------
 scored_occupations <- aggregate_score_to_occupation_level(
   scored_skills,
   esco_occupation_skill_mapping,
@@ -121,86 +317,169 @@ scored_occupations <- aggregate_score_to_occupation_level(
   remove_extra = T
 )
 
-
-write_csv(scored_occupations, "results/scored_esco_occupations.csv")
-
-scored_skills %>%
-  left_join(
-    esco_research_skills %>%
-      mutate(is_research = T) %>%
-      select(conceptUri, is_research),
-    by = c("esco_skill_uri"= "conceptUri")
-  ) %>%
+scored_occupations_with_group_labels <- scored_occupations %>%
   mutate(
-    is_research = ifelse(is.na(is_research), F, is_research),
-    max_similarity_score = (max_similarity - mean(max_similarity))/sd(max_similarity)
+    isco_level_1 = substr(isco_group, 1, 1),
+    isco_level_2 = substr(isco_group, 1, 2),
+    isco_level_3 = substr(isco_group, 1, 3),
+    isco_level_4 = substr(isco_group, 1, 4)
   ) %>%
-  #ggplot(aes(x = max_similarity_score, fill = is_research)) +
-  ggplot(aes(x = max_similarity_score)) +
-  geom_density(alpha = 0.5) +
-  # add points on the x axis for the research skills
-  geom_point(
-    data = . %>% filter(is_research),
-    aes(x = max_similarity_score, y = 0),
-    color = "red",
-    size = 2
-  ) +
-  theme_minimal() +
-  labs(
-    title = "Distribution of skill similarity scores",
-    x = "Skill similarity score",
-    y = "Density"
+  left_join(
+    select(
+      isco_groups, isco_level_1 = code, isco_level_1_label = preferredLabel
+    ),
+    by = "isco_level_1"
+  ) %>%
+  left_join(
+    isco_groups %>%
+      select(
+        isco_level_2 = code, isco_level_2_label = preferredLabel
+      ),
+    by = "isco_level_2"
+  ) %>%
+  left_join(
+    isco_groups %>%
+      select(
+        isco_level_3 = code, isco_level_3_label = preferredLabel
+      ),
+    by = "isco_level_3"
+  ) %>%
+  left_join(
+    isco_groups %>%
+      select(
+        isco_level_4 = code, isco_level_4_label = preferredLabel
+      ),
+    by = "isco_level_4"
   )
 
-# temp --------------------------------------------------------------------
-# scored_skills %>%
-#   arrange(desc(max_similarity)) %>%
-#   print(n = 200)
-# 
-# scored_occupations %>%
-#   ungroup() %>%
-#   group_by(isco_group) %>%
-#   summarise(
-#     n_occupations = n(),
-#     n_skills = sum(n_skills),
-#     exposure_score_mean_of_max_weighted = mean(exposure_score_mean_of_max_weighted)
-#   ) %>%
-#   arrange(desc(exposure_score_mean_of_max_weighted))
-# 
-# scored_occupations %>%
-#   ungroup() %>%
-#   group_by(substr(isco_group,1,2)) %>%
-#   summarise(
-#     n_occupations = n(),
-#     n_skills = sum(n_skills),
-#     exposure_score_mean_of_max_weighted = mean(exposure_score_mean_of_max_weighted)
-#   ) %>%
-#   arrange(desc(exposure_score_mean_of_max_weighted))
-# 
-# esco_occupation_skill_mapping %>% 
-#   filter(
-#     occupationUri == "http://data.europa.eu/esco/occupation/87d0795a-d41f-47ee-979f-0ab7d73836e7" & 
-#       skillType == "skill/competence"
-#   ) %>% 
-#   left_join(scored_skills, by = c("skillUri" = "esco_skill_uri")) %>% 
-#   select(esco_skill_label, max_similarity, max_similarity_capability)
-# 
-# esco_occupation_skill_mapping %>% 
-#   filter(
-#     occupationUri == "http://data.europa.eu/esco/occupation/24e9f120-eae8-411a-8daf-c48e8ae2f5f6" & 
-#       skillType == "skill/competence"
-#   ) %>% 
-#   left_join(scored_skills, by = c("skillUri" = "esco_skill_uri")) %>% 
-#   select(esco_skill_label, max_similarity, max_similarity_capability)
-# 
-# esco_occupation_skill_mapping %>%
-#   left_join(scored_skills, by = c("skillUri" = "esco_skill_uri")) %>%
-#   filter(!is.na(max_similarity)) %>%
-#   pull(max_similarity) %>%
-#   quantile(probs = seq(0,1,0.01))
-# 
-# scored_skills %>%
-#   mutate(
-#     max_max = ifelse(max_similarity > 0.95, max_similarity, 0)
-#   ) %>%
-#   arrange(desc(max_max)) 
+
+# # identify research relevant skills -------------------------------------
+scored_research_skills <- score_research_skills(
+  scored_skills,
+  esco_research_skills,
+  return_all = F
+)
+
+research_skills_plot <- plot_research_skills(
+  scored_skills,
+  esco_research_skills
+)
+
+scored_skill_groups %>%
+  filter(!is.na(supergroup_label)) %>%
+  group_by(supergroup_label, group_label) %>%
+  mutate(group_mean = mean(max_similarity_standardized)) %>%
+  ungroup() %>%
+  mutate(
+    supergroup_label = factor(
+      supergroup_label,
+      levels = scored_skill_groups %>%
+        group_by(supergroup_label) %>%
+        summarize(supergroup_mean = mean(max_similarity_standardized)) %>%
+        arrange(desc(supergroup_mean)) %>%
+        pull(supergroup_label)
+    )
+  ) %>%
+  ggplot(aes(x = max_similarity_standardized, y = supergroup_label)) +
+  #geom_jitter(width = 0, height = 0.2, color = "gray", alpha = 0.3) +  # Jittered points in dim gray
+  stat_summary(aes(group = group_label), fun = mean, geom = "point", shape = 4, size = 1, color = "black") +  # Group mean as a smaller blue rhombus
+  stat_summary(fun = mean, geom = "point", shape = 18, size = 4, color = "red") +  # Supergroup mean as a larger red rhombus
+  labs(x = "Max Similarity (Standardized)", y = "Supergroup Label") +
+  theme_minimal()
+
+scored_skill_groups %>%
+  filter(!is.na(supergroup_label)) %>%
+  group_by(supergroup_label, group_label) %>%
+  summarize(group_mean = mean(max_similarity_standardized)) %>%
+  arrange(supergroup_label, group_mean) %>%    
+  print(n = Inf) # TODO some unintuitive results
+
+
+# save results ------------------------------------------------------------
+write_csv(
+  scored_occupations, 
+  file.path(args$output_dir, "scored_esco_occupations.csv")
+)
+
+write_csv(
+  scored_occupations %>%
+    group_by(isco_level_4 = isco_group) %>%
+    summarise(
+      #n_occupations = n(),
+      ai_product_exposure_score = mean(ai_product_exposure_score)
+    ), 
+  file.path(args$output_dir, "scored_esco_occupations_isco_4_digit.csv")
+)
+
+write_csv(
+  scored_occupations %>%
+    group_by(isco_level_3 = substr(isco_group, 1, 3)) %>%
+    summarise(
+      #n_occupations = n(),
+      ai_product_exposure_score = mean(ai_product_exposure_score)
+    ),
+  file.path(args$output_dir, "scored_esco_occupations_isco_3_digit.csv")
+)
+
+write_csv(
+  scored_occupations %>%
+    group_by(isco_level_2 = substr(isco_group, 1, 2)) %>%
+    summarise(
+      #n_occupations = n(),
+      ai_product_exposure_score = mean(ai_product_exposure_score)
+    ),
+  file.path(args$output_dir, "scored_esco_occupations_isco_2_digit.csv")
+)
+
+write_csv(
+  scored_occupations %>%
+    group_by(isco_level_1 = substr(isco_group, 1, 1)) %>%
+    summarise(
+      #n_occupations = n(),
+      ai_product_exposure_score = mean(ai_product_exposure_score)
+    ),
+  file.path(args$output_dir, "scored_esco_occupations_isco_1_digit.csv")
+)
+
+write_csv(
+  scored_skill_groups %>%
+    group_by(skill_group_level_1 = supergroup_label) %>%
+    summarise(
+      n_skills = n(),
+      ave_max_similarity_standardized = mean(max_similarity_standardized)
+    ) %>%
+    arrange(desc(ave_max_similarity_standardized)) %>%
+    filter(!is.na(skill_group_level_1)), 
+  file.path(args$output_dir, "scored_esco_skills_level_1_groups.csv") 
+)
+
+write_csv(
+  scored_skill_groups %>%
+    group_by(skill_group_level_2 = group_label) %>%
+    summarise(
+      n_skills = n(),
+      ave_max_similarity_standardized = mean(max_similarity_standardized)
+    ) %>%
+    arrange(desc(ave_max_similarity_standardized)) %>%
+    filter(!is.na(skill_group_level_2)), 
+  file.path(args$output_dir, "scored_esco_skills_level_2_groups.csv")
+)
+
+# write_csv(
+#   scored_skill_groups %>%
+#     group_by(skill_group_level_3 = subgroup_label) %>%
+#     summarise(
+#       n_skills = n(),
+#       ave_max_similarity_standardized = mean(max_similarity_standardized)
+#     ) %>%
+#     arrange(desc(ave_max_similarity_standardized)) %>%
+#     filter(!is.na(skill_group_level_3)), 
+#   args$output_skill_groups 
+# )
+
+ggsave(
+  "results/research_skills_plot.png",
+  research_skills_plot,
+  width = 8,
+  height = 6
+)

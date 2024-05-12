@@ -1,15 +1,48 @@
 library(tidyverse)
 library(haven)
 
-webb_data <- read_csv("data/webb/exposure_by_occ1990dd_lswt2010.csv")
-webb_df <- read_dta("data/webb/final_df_out.dta")
-webb_crosswalk <- read_dta("data/webb/onet_to_occ1990dd.dta")
-esco_crosswalk <- read_csv("data/esco/onet_esco_crosswalk.csv")
-isco_groups <- read_csv("data/esco/ISCOGroups_en.csv")
-felten_data <- read_csv("data/felten_et_al/appendix_A.csv")
 
-scored_occupations <- read_csv("results/scored_esco_occupations.csv")
+# define script arguments -------------------------------------------------
+parser <- ArgumentParser()
 
+parser$add_argument(
+  "--webb_data", 
+  type = "character",
+  help = "Path to output from Webb 2022", 
+  default = "data/webb/exposure_by_occ1990dd_lswt2010.csv"
+)
+parser$add_argument(
+  "--webb_crosswalk", 
+  type = "character",
+  help = "Path to crosswalk between Webb 2022 and occ1990dd", 
+  default = "data/webb/onet_to_occ1990dd.dta"
+)
+parser$add_argument(
+  "--esco_crosswalk", 
+  type = "character",
+  help = "Path to crosswalk between ESCO and ONET", 
+  default = "data/esco/onet_esco_crosswalk.csv"
+)
+parser$add_argument(
+  "--isco_groups", 
+  type = "character",
+  help = "Path to ISCO groups", 
+  default = "data/esco/ISCOGroups_en.csv"
+)
+praser$add_argument(
+  "--felten_data", 
+  type = "character",
+  help = "Path to Felten et al. data", 
+  default = "data/felten_et_al/appendix_A.csv"
+)
+parser$add_argument(
+  "--scored_occupations", 
+  type = "character",
+  help = "Path to scored ESCO occupations", 
+  default = "results/scored_esco_occupations.csv"
+)
+
+# functions ---------------------------------------------------------------
 match_to_webb <- function(
   scored_occupations,
   webb_data,
@@ -364,6 +397,17 @@ aggregate_all_to_3digit_isco <- function(
     )
 }
 
+
+# read data ---------------------------------------------------------------
+webb_data <- read_csv(args$webb_data)
+#webb_df <- read_dta("data/webb/final_df_out.dta")
+webb_crosswalk <- read_dta(args$webb_crosswalk)
+esco_crosswalk <- read_csv(args$esco_crosswalk)
+isco_groups <- read_csv(args$isco_groups)
+felten_data <- read_csv(args$felten_data)
+
+scored_occupations <- read_csv(args$scored_occupations)
+
 # run ---------------------------------------------------------------------
 scored_occupations_matched <- scored_occupations %>%
   match_from_all(
@@ -391,6 +435,8 @@ scored_groups_matched <- scored_groups_matched %>%
   ) %>%
   select(isco_3digit, group_label, everything())
 
+
+# write results -----------------------------------------------------------
 write_csv(
   scored_occupations_matched,
   "results/scored_esco_occupations_matched.csv"
