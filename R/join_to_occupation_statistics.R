@@ -1,5 +1,8 @@
 library(tidyverse)
 library(ggplot2)
+library(argparse)
+library(rnaturalearth)
+library(sf)
 
 # define script arguments -------------------------------------------------
 parser <- ArgumentParser()
@@ -20,9 +23,14 @@ parser$add_argument(
   "--scored_occupations", 
   type = "character",
   help = "Path to scored ESCO occupations", 
-  default = "results/scored_esco_occupations_matched.csv"
+  default = "results/occupational_exposure_to_ai_products/scored_esco_occupations_matched.csv"
 )
-
+parser$add_argument(
+  "--output_dir", 
+  type = "character",
+  help = "Path to output file",
+  default = "results"
+)
 
 # read data ---------------------------------------------------------------
 args <- parser$parse_args()
@@ -119,19 +127,22 @@ scored_occupations_2digit <- scored_occupations_2digit %>%
   )
 
 # plot figures ------------------------------------------------------------
-ggplot(scored_occupations_2digit, aes(x = mean_wage_coefficient, y = ai_product_exposure_score)) +
+vs_wage_plot <- scored_occupations_2digit %>%
+  ggplot(aes(x = mean_wage_coefficient, y = ai_product_exposure_score)) +
   geom_point() +
   geom_smooth(method = "lm") +
   xlab("Mean wage coefficient") +
   ylab("AI product exposure score") +
-  ggtitle("AI product exposure score vs. mean wage coefficient")
+  ggtitle("AI product exposure score vs. mean wage coefficient") +
+  theme_minimal()
 
 ggplot(scored_occupations_2digit, aes(x = mean_wage_coefficient, y = felten_exposure_score)) +
   geom_point() +
   geom_smooth(method = "loess") +
   xlab("Mean wage coefficient") +
   ylab("Felten exposure score") +
-  ggtitle("Felten exposure score vs. mean wage coefficient")
+  ggtitle("Felten exposure score vs. mean wage coefficient") +
+  theme_minimal()
 
 ggplot(scored_occupations_2digit, aes(x = mean_wage_coefficient, y = webb_exposure_score)) +
   geom_point() +
@@ -156,10 +167,68 @@ ggplot(scored_occupations_2digit, aes(x = percent_women, y = ai_product_exposure
   ggtitle("AI product exposure score vs. total employment")
 
 
-ggplot(scored_occupations_2digit, aes(x = percent_unemployed, y = ai_product_exposure_score)) +
+vs_unemployment_plot <- ggplot(scored_occupations_2digit, aes(x = percent_unemployed, y = ai_product_exposure_score)) +
   geom_point() +
   geom_smooth(method = "lm") +
   xlab("% Unemployed in Occupation") +
   ylab("AI product exposure score") +
   ggtitle("AI product exposure score vs. unemployment rate")
 
+cor.test(
+  scored_occupations_2digit$ai_product_exposure_score, 
+  scored_occupations_2digit$mean_wage_coefficient
+)
+
+cor.test(
+  scored_occupations_2digit$ai_product_exposure_score, 
+  scored_occupations_2digit$percent_unemployed
+)
+
+cor.test(
+  scored_occupations_2digit$felten_exposure_score, 
+  scored_occupations_2digit$mean_wage_coefficient
+)
+
+eu_27 <- c(
+  "AT", "BE", "BG", "CY", "CZ", "DE", "DK", "EE", "ES", "FI", 
+  "FR", "GR", "HR", "HU", "IE", "IT", "LT", "LU", "LV", "MT", 
+  "NL", "PL", "PT", "RO", "SE", "SI", "SK"
+)
+gray_countries <- c(
+  "GB", #"IS", 
+  "NO", "CH", "LI",
+  "ME", "MK", "AL", "RS", "BA", 
+  "XK", "MD", "UA", "BY"
+)
+
+europe_map <- ne_countries(scale = "medium", returnclass = "sf") %>%
+  filter(iso_a2 %in% eu_27 | iso_a2 %in% gray_countries | name_en == "France") %>%
+  mutate(
+    iso_a2 = if_else(name_en == "France", "FR", iso_a2)
+  ) %>%
+  left_join(exposure_by_country, by = c("iso_a2" = "country"))
+
+# Plot the map
+expsure_map <- ggplot(europe_map) +
+  geom_sf(aes(fill = ai_product_exposure_score)) +
+  scale_fill_gradient(low = "lightblue", high = "darkblue", na.value = "grey50") +
+  theme_minimal() +
+  labs(title = "AI Product Exposure Score by Country in Europe",
+       fill = "Exposure Score") +
+  coord_sf(xlim = c(-10, 40), ylim = c(34, 70))
+
+
+# save results ------------------------------------------------------------
+ggsave(
+  file.path(args$output_dir, "plots", "exposure_vs_wage_plot.png"), 
+  vs_wage_plot, 
+  width = 10, height = 10
+)
+ggsave(
+  file.path(args$output_dir, "plots", "exposure_vs_unemployment_plot.png"), 
+  vs_unemployment_plot, width = 10, height = 10
+)
+ggsave(
+  file.path(args$output_dir, "plots", "exposure_map.png"), 
+  expsure_map, width = 10, height = 10
+)

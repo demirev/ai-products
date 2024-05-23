@@ -1,0 +1,75 @@
+skill_group_level_2,n_skills,ave_max_similarity_standardized
+information skills,1,0.8469134519240533
+working with computers,10,0.8197182586092232
+programming computer systems,39,0.7406753037639027
+accessing and analysing digital data,78,0.7085100590690019
+management skills,31,0.6794573587533298
+assisting and caring,6,0.6558900251161335
+managing information,61,0.6506015754118132
+building and developing teams,12,0.6505935665329803
+setting up and protecting computer systems,61,0.6391490660674438
+solving problems,64,0.6327794794410166
+developing objectives and strategies,349,0.6223674888689784
+monitoring developments in area of expertise,70,0.5876657887374069
+analysing and evaluating information and data,387,0.5697626859308429
+liaising and networking,249,0.5380208090564085
+processing information,94,0.5124702378112879
+"communication, collaboration and creativity",8,0.498696904508659
+counselling,53,0.4833869151850193
+"using digital tools for collaboration, content creation and problem solving",79,0.4756552643273605
+advising and consulting,376,0.4613233948280616
+teaching and training,259,0.45401445926938816
+designing systems and products,235,0.40287003728517956
+making decisions,31,0.37256896686707563
+leading and motivating,33,0.3576550854555262
+"organising, planning and scheduling work and activities",441,0.3574056088389884
+calculating and estimating,121,0.33318558540383963
+protecting and enforcing,482,0.32612424188280786
+obtaining information verbally,57,0.3077307146643332
+working with others,158,0.2889714290385109
+allocating and controlling resources,159,0.275457462461376
+"conducting studies, investigations and examinations",317,0.2664420332126658
+providing health care or medical treatments,236,0.2597615233082183
+presenting information,69,0.25485578931659403
+supervising people,163,0.24563825297021352
+negotiating,83,0.22981171845003223
+using more than one language,47,0.22144885326158126
+documenting and recording information,287,0.1503268356772558
+"monitoring, inspecting and testing",559,0.10919903181028139
+using precision instrumentation and equipment,222,0.06503769267575146
+"installing, maintaining and repairing electrical, electronic and precision equipment",142,0.04032612335272078
+using digital tools to control machinery,37,0.03938080887755712
+providing information and support to the public and clients,87,0.03218894560984319
+"creating artistic, visual or instructive materials",252,-0.020844219003239708
+writing and composing,139,-0.05488284969627428
+operating watercraft,46,-0.05632795037890927
+measuring physical properties,65,-0.05950623932227343
+handling and moving,4,-0.079050413118298
+"promoting, selling and purchasing",220,-0.09384028032774544
+working with machinery and specialised equipment,16,-0.1003127749677701
+performing administrative activities,91,-0.17768619067310293
+operating aircraft,10,-0.27065366588894746
+constructing,6,-0.2787556838222447
+providing general personal care,82,-0.30064760260196804
+performing and entertaining,126,-0.3326284756567424
+handling animals,234,-0.3559791041541907
+operating mobile plant,91,-0.36141564430878037
+"installing, maintaining and repairing mechanical equipment",91,-0.3623821561538706
+building and repairing structures,325,-0.3812821024223816
+"making moulds, casts, models and patterns",52,-0.40134611853559343
+operating machinery for the extraction and processing of raw materials,208,-0.4707143800249594
+handling and disposing of waste and hazardous materials,61,-0.4736167090225895
+driving vehicles,53,-0.48232036249555343
+installing interior or exterior infrastructure,62,-0.5023477498480157
+tending plants and crops,70,-0.5325518575401955
+recruiting and hiring,22,-0.5724045630479642
+assembling and fabricating products,249,-0.6021153539420446
+sorting and packaging goods and materials,119,-0.6110414692211026
+moving and lifting,220,-0.611389291845822
+preparing and serving food and drinks,75,-0.6767921636631119
+operating machinery for the manufacture of products,418,-0.6947333055737683
+transforming and blending materials,108,-0.7227446119316405
+cleaning,148,-0.9957578885970714
+finishing interior or exterior of structures,91,-1.0472599017995274
+using hand tools,191,-1.136072460447911
+washing and maintaining textiles and clothing,17,-1.3459597466012443

@@ -1,6 +1,6 @@
 library(tidyverse)
 library(haven)
-
+library(argparse)
 
 # define script arguments -------------------------------------------------
 parser <- ArgumentParser()
@@ -29,7 +29,7 @@ parser$add_argument(
   help = "Path to ISCO groups", 
   default = "data/esco/ISCOGroups_en.csv"
 )
-praser$add_argument(
+parser$add_argument(
   "--felten_data", 
   type = "character",
   help = "Path to Felten et al. data", 
@@ -39,7 +39,13 @@ parser$add_argument(
   "--scored_occupations", 
   type = "character",
   help = "Path to scored ESCO occupations", 
-  default = "results/scored_esco_occupations.csv"
+  default = "results/occupational_exposure_to_ai_products/scored_esco_occupations.csv"
+)
+parser$add_argument(
+  "--output_dir", 
+  type = "character",
+  help = "Path to output file",
+  default = "results"
 )
 
 # functions ---------------------------------------------------------------
@@ -399,6 +405,8 @@ aggregate_all_to_3digit_isco <- function(
 
 
 # read data ---------------------------------------------------------------
+args <- parser$parse_args()
+
 webb_data <- read_csv(args$webb_data)
 #webb_df <- read_dta("data/webb/final_df_out.dta")
 webb_crosswalk <- read_dta(args$webb_crosswalk)
@@ -436,15 +444,74 @@ scored_groups_matched <- scored_groups_matched %>%
   select(isco_3digit, group_label, everything())
 
 
+# ggplot of ai_product_exposure_score vs felten_exposure_score
+vs_felten_plot <- scored_groups_matched %>%
+  ggplot(aes(
+    x = ai_product_exposure_score,
+    y = felten_exposure_score
+  )) +
+  geom_point() +
+  geom_smooth(method = "lm") +
+  labs(
+    x = "AI Product Exposure Score",
+    y = "Felten Exposure Score"
+  ) +
+  # add gray dashed lines at x = 0 and y = 0
+  geom_vline(xintercept = 0, linetype = "dashed", color = "gray") +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "gray") +
+  theme_minimal()
+
+list(
+  high_felten_low_product_exposure = scored_groups_matched %>%
+    filter(
+      felten_exposure_score > 0,
+      ai_product_exposure_score < 0
+    ) %>%
+    select(
+      isco_3digit,
+      group_label,
+      ai_product_exposure_score,
+      felten_exposure_score
+    ) %>%
+    arrange(desc(felten_exposure_score)),
+  low_felten_high_product_exposure = scored_groups_matched %>%
+    filter(
+      felten_exposure_score < 0,
+      ai_product_exposure_score > 0
+    ) %>%
+    select(
+      isco_3digit,
+      group_label,
+      ai_product_exposure_score,
+      felten_exposure_score
+    ) %>%
+    arrange(ai_product_exposure_score)
+)
+
 # write results -----------------------------------------------------------
 write_csv(
   scored_occupations_matched,
-  "results/scored_esco_occupations_matched.csv"
+  file.path(
+    args$output_dir,
+    "occupational_exposure_to_ai_products",
+    "scored_esco_occupations_matched.csv"
+  )
 )
 
-write_csv(
-  scored_groups_matched,
-  "results/scored_esco_3_digit_groups.csv"
+# write_csv(
+#   scored_groups_matched,
+#   "results/occupational_exposure_to_ai_products/scored_esco_occupations_isco_3_digit_matched.csv"
+# )
+
+ggsave(
+  file.path(
+    args$output_dir,
+    "plots",
+    "ai_product_exposure_score_vs_felten_exposure_score.png"
+  ),
+  vs_felten_plot,
+  width = 8,
+  height = 6
 )
 
 # temp --------------------------------------------------------------------
@@ -454,10 +521,22 @@ cor(
   use = "complete.obs"
 )
 
+cor.test(
+  scored_groups_matched$felten_exposure_score, 
+  scored_groups_matched$webb_exposure_score,
+  method = "pearson"
+)
+
 cor(
   scored_groups_matched$ai_product_exposure_score, 
   scored_groups_matched$webb_exposure_score,
   use = "complete.obs"
+)
+
+cor.test(
+  scored_groups_matched$ai_product_exposure_score, 
+  scored_groups_matched$webb_exposure_score,
+  method = "pearson"
 )
 
 cor(
@@ -466,64 +545,13 @@ cor(
   use = "complete.obs"
 )
 
-plot(
-  scored_groups_matched$ai_product_exposure_score,
-  scored_groups_matched$felten_exposure_score
+summary(lm(
+  ai_product_exposure_score ~ felten_exposure_score,
+  data = scored_groups_matched
+))
+
+cor.test(
+  scored_groups_matched$ai_product_exposure_score, 
+  scored_groups_matched$felten_exposure_score,
+  method = "pearson"
 )
-
-scored_occupations_plus_webb %>%
-  filter(
-    pct_ai > 80 &
-      exposure_score_mean_of_max_weighted < 
-      quantile(exposure_score_mean_of_max_weighted, 0.2)
-  ) %>%
-  arrange(desc(pct_ai)) %>%
-  select(
-    occupation_title,
-    exposure_score_mean_of_max_weighted,
-    pct_ai
-  ) %>%
-  print(n = Inf)
-
-scored_occupations_plus_webb %>%
-  filter(
-    pct_ai < 20 &
-      exposure_score_mean_of_max_weighted > 
-      quantile(exposure_score_mean_of_max_weighted, 0.8)
-  ) %>%
-  arrange(desc(exposure_score_mean_of_max_weighted)) %>%
-  select(
-    occupation_title,
-    exposure_score_mean_of_max_weighted,
-    pct_ai
-  ) %>%
-  print(n = Inf)
-
-scored_occupations_plus_webb %>%
-  filter(
-    pct_ai > 80 &
-      exposure_score_mean_of_max_weighted > 
-      quantile(exposure_score_mean_of_max_weighted, 0.8)
-  ) %>%
-  arrange(desc(exposure_score_mean_of_max_weighted)) %>%
-  select(
-    occupation_title,
-    exposure_score_mean_of_max_weighted,
-    pct_ai
-  ) %>%
-  print(n = Inf)
-
-scored_occupations_plus_webb %>%
-  filter(
-    pct_ai < 20 &
-      exposure_score_mean_of_max_weighted < 
-      quantile(exposure_score_mean_of_max_weighted, 0.2)
-  ) %>%
-  arrange(desc(exposure_score_mean_of_max_weighted)) %>%
-  select(
-    occupation_title,
-    exposure_score_mean_of_max_weighted,
-    pct_ai
-  ) %>%
-  print(n = Inf)
-

@@ -8,7 +8,7 @@ parser$add_argument(
   "--scored_skills", 
   type = "character",
   help = "Path to scored skills file", 
-  default = "results/scored_esco_skills.csv"
+  default = "results/scored_esco_skills/scored_esco_skills.csv"
 )
 parser$add_argument(
   "--esco_occupations", 
@@ -56,7 +56,7 @@ parser$add_argument(
   "--isco_groups",
   type = "character",
   help = "Path to isco groups file",
-  default = "data/isco/ISCOGroups_en.csv"
+  default = "data/esco/ISCOGroups_en.csv"
 )
 parser$add_argument(
   "--output_dir", 
@@ -229,6 +229,20 @@ plot_research_skills <- function(
     )))
 }
 
+plot_research_skills_boxplot <- function(
+  scored_skills, esco_research_skills
+) {
+  score_research_skills(scored_skills, esco_research_skills, return_all = T) %>%
+    ggplot(aes(x = is_research, y = max_similarity_standardized, color = is_research)) +
+    geom_boxplot() +
+    theme_minimal() +
+    labs(
+      title = "Similarity of Research Skills to AI Product Capabilities",
+      x = "Research-relevant skills",
+      y = "AI Capability/Job Skill Similarity Score"
+    )
+}
+
 aggregate_skills_to_groups <- function(
   scored_skills, esco_skill_hierarchy, esco_skill_relations  
 ) {
@@ -317,6 +331,8 @@ scored_occupations <- aggregate_score_to_occupation_level(
   remove_extra = T
 )
 
+
+# plot occupation scores --------------------------------------------------
 scored_occupations_with_group_labels <- scored_occupations %>%
   mutate(
     isco_level_1 = substr(isco_group, 1, 1),
@@ -352,6 +368,48 @@ scored_occupations_with_group_labels <- scored_occupations %>%
     by = "isco_level_4"
   )
 
+occupation_scores_level_2_plot <- scored_occupations_with_group_labels %>%
+  group_by(isco_level_2, isco_level_3) %>%
+  mutate(group_mean = mean(ai_product_exposure_score)) %>%
+  ungroup() %>%
+  mutate(
+    isco_level_2_label = factor(
+      isco_level_2_label,
+      levels = scored_occupations_with_group_labels %>%
+        group_by(isco_level_2_label) %>%
+        summarize(supergroup_mean = mean(ai_product_exposure_score)) %>%
+        arrange((supergroup_mean)) %>%
+        pull(isco_level_2_label)
+    )
+  ) %>%
+  ggplot(aes(x = ai_product_exposure_score, y = isco_level_2_label)) +
+  geom_jitter(width = 0, height = 0.2, color = "gray", alpha = 0.3) +  # Jittered points in dim gray
+  #stat_summary(aes(group = isco_level_3_label), fun = mean, geom = "point", shape = 4, size = 1, color = "black") +  # Group mean as a smaller blue rhombus
+  stat_summary(fun = mean, geom = "point", shape = 18, size = 4, color = "red") +  # Supergroup mean as a larger red rhombus
+  labs(x = "Exposure score", y = "Occupation") +
+  theme_minimal()
+
+occupation_scores_level_1_plot <- scored_occupations_with_group_labels %>%
+  group_by(isco_level_1, isco_level_2) %>%
+  mutate(group_mean = mean(ai_product_exposure_score)) %>%
+  ungroup() %>%
+  mutate(
+    isco_level_1_label = factor(
+      isco_level_1_label,
+      levels = scored_occupations_with_group_labels %>%
+        group_by(isco_level_1_label) %>%
+        summarize(supergroup_mean = mean(ai_product_exposure_score)) %>%
+        arrange((supergroup_mean)) %>%
+        pull(isco_level_1_label)
+    )
+  ) %>%
+  ggplot(aes(x = ai_product_exposure_score, y = isco_level_1_label)) +
+  geom_jitter(width = 0, height = 0.2, color = "gray", alpha = 0.3) +  # Jittered points in dim gray
+  stat_summary(aes(group = isco_level_2_label), fun = mean, geom = "point", shape = 4, size = 1, color = "black") +  # Group mean as a smaller blue rhombus
+  stat_summary(fun = mean, geom = "point", shape = 18, size = 4, color = "red") +  # Supergroup mean as a larger red rhombus
+  labs(x = "Exposure score", y = "Occupation") +
+  theme_minimal()
+
 
 # # identify research relevant skills -------------------------------------
 scored_research_skills <- score_research_skills(
@@ -365,7 +423,12 @@ research_skills_plot <- plot_research_skills(
   esco_research_skills
 )
 
-scored_skill_groups %>%
+research_skills_box_plot <- plot_research_skills_boxplot(
+  scored_skills,
+  esco_research_skills
+)
+
+scored_skills_plot <- scored_skill_groups %>%
   filter(!is.na(supergroup_label)) %>%
   group_by(supergroup_label, group_label) %>%
   mutate(group_mean = mean(max_similarity_standardized)) %>%
@@ -376,7 +439,7 @@ scored_skill_groups %>%
       levels = scored_skill_groups %>%
         group_by(supergroup_label) %>%
         summarize(supergroup_mean = mean(max_similarity_standardized)) %>%
-        arrange(desc(supergroup_mean)) %>%
+        arrange((supergroup_mean)) %>%
         pull(supergroup_label)
     )
   ) %>%
@@ -385,7 +448,8 @@ scored_skill_groups %>%
   stat_summary(aes(group = group_label), fun = mean, geom = "point", shape = 4, size = 1, color = "black") +  # Group mean as a smaller blue rhombus
   stat_summary(fun = mean, geom = "point", shape = 18, size = 4, color = "red") +  # Supergroup mean as a larger red rhombus
   labs(x = "Max Similarity (Standardized)", y = "Supergroup Label") +
-  theme_minimal()
+  theme_minimal() +
+  labs(y = "")
 
 scored_skill_groups %>%
   filter(!is.na(supergroup_label)) %>%
@@ -398,7 +462,11 @@ scored_skill_groups %>%
 # save results ------------------------------------------------------------
 write_csv(
   scored_occupations, 
-  file.path(args$output_dir, "scored_esco_occupations.csv")
+  file.path(
+    args$output_dir, 
+    "occupational_exposure_to_ai_products",
+    "scored_esco_occupations.csv"
+  )
 )
 
 write_csv(
@@ -408,7 +476,11 @@ write_csv(
       #n_occupations = n(),
       ai_product_exposure_score = mean(ai_product_exposure_score)
     ), 
-  file.path(args$output_dir, "scored_esco_occupations_isco_4_digit.csv")
+  file.path(
+    args$output_dir,
+    "occupational_exposure_to_ai_products",
+    "scored_esco_occupations_isco_4_digit.csv"
+  )
 )
 
 write_csv(
@@ -418,7 +490,11 @@ write_csv(
       #n_occupations = n(),
       ai_product_exposure_score = mean(ai_product_exposure_score)
     ),
-  file.path(args$output_dir, "scored_esco_occupations_isco_3_digit.csv")
+  file.path(
+    args$output_dir, 
+    "occupational_exposure_to_ai_products",
+    "scored_esco_occupations_isco_3_digit.csv"
+  )
 )
 
 write_csv(
@@ -428,7 +504,11 @@ write_csv(
       #n_occupations = n(),
       ai_product_exposure_score = mean(ai_product_exposure_score)
     ),
-  file.path(args$output_dir, "scored_esco_occupations_isco_2_digit.csv")
+  file.path(
+    args$output_dir, 
+    "occupational_exposure_to_ai_products",
+    "scored_esco_occupations_isco_2_digit.csv"
+  )
 )
 
 write_csv(
@@ -438,7 +518,11 @@ write_csv(
       #n_occupations = n(),
       ai_product_exposure_score = mean(ai_product_exposure_score)
     ),
-  file.path(args$output_dir, "scored_esco_occupations_isco_1_digit.csv")
+  file.path(
+    args$output_dir, 
+    "occupational_exposure_to_ai_products",
+    "scored_esco_occupations_isco_1_digit.csv"
+  )
 )
 
 write_csv(
@@ -450,7 +534,11 @@ write_csv(
     ) %>%
     arrange(desc(ave_max_similarity_standardized)) %>%
     filter(!is.na(skill_group_level_1)), 
-  file.path(args$output_dir, "scored_esco_skills_level_1_groups.csv") 
+  file.path(
+    args$output_dir, 
+    "scored_esco_skills",
+    "scored_esco_skills_level_1_groups.csv"
+  ) 
 )
 
 write_csv(
@@ -462,24 +550,46 @@ write_csv(
     ) %>%
     arrange(desc(ave_max_similarity_standardized)) %>%
     filter(!is.na(skill_group_level_2)), 
-  file.path(args$output_dir, "scored_esco_skills_level_2_groups.csv")
+  file.path(
+    args$output_dir, 
+    "scored_esco_skills",
+    "scored_esco_skills_level_2_groups.csv"
+  )
 )
 
-# write_csv(
-#   scored_skill_groups %>%
-#     group_by(skill_group_level_3 = subgroup_label) %>%
-#     summarise(
-#       n_skills = n(),
-#       ave_max_similarity_standardized = mean(max_similarity_standardized)
-#     ) %>%
-#     arrange(desc(ave_max_similarity_standardized)) %>%
-#     filter(!is.na(skill_group_level_3)), 
-#   args$output_skill_groups 
-# )
-
 ggsave(
-  "results/research_skills_plot.png",
+  file.path(args$output_dir, "plots", "research_skills_plot.png"),
   research_skills_plot,
   width = 8,
   height = 6
 )
+
+ggsave(
+  file.path(args$output_dir, "plots", "research_skills_boxplot.png"),
+  research_skills_box_plot,
+  width = 8,
+  height = 6
+)
+
+ggsave(
+  file.path(args$output_dir, "plots", "scored_skills_plot.png"),
+  scored_skills_plot,
+  width = 8,
+  height = 6
+)
+
+ggsave(
+  file.path(args$output_dir, "plots", "occupation_scores_level_2_plot.png"),
+  occupation_scores_level_2_plot,
+  width = 8,
+  height = 6
+)
+
+ggsave(
+  file.path(args$output_dir, "plots", "occupation_scores_level_1_plot.png"),
+  occupation_scores_level_1_plot,
+  width = 8,
+  height = 6
+)
+
+
