@@ -1,6 +1,8 @@
 library(tidyverse)
 library(haven)
 library(argparse)
+library(showtext)
+library(sysfonts)
 
 # define script arguments -------------------------------------------------
 parser <- ArgumentParser()
@@ -47,6 +49,9 @@ parser$add_argument(
   help = "Path to output file",
   default = "results"
 )
+
+font_add_google("Merriweather", "merriweather")
+showtext_auto()
 
 # functions ---------------------------------------------------------------
 match_to_webb <- function(
@@ -459,7 +464,8 @@ vs_felten_plot <- scored_groups_matched %>%
   # add gray dashed lines at x = 0 and y = 0
   geom_vline(xintercept = 0, linetype = "dashed", color = "gray") +
   geom_hline(yintercept = 0, linetype = "dashed", color = "gray") +
-  theme_minimal()
+  theme_minimal() +
+  theme(text = element_text(family = "merriweather"))
 
 list(
   high_felten_low_product_exposure = scored_groups_matched %>%
@@ -507,11 +513,11 @@ ggsave(
   file.path(
     args$output_dir,
     "plots",
-    "ai_product_exposure_score_vs_felten_exposure_score.png"
+    "ai_product_exposure_score_vs_felten_exposure_score.svg"
   ),
   vs_felten_plot,
-  width = 8,
-  height = 6
+  width = 9,
+  height = 5
 )
 
 # temp --------------------------------------------------------------------

@@ -3,6 +3,8 @@ library(ggplot2)
 library(argparse)
 library(rnaturalearth)
 library(sf)
+library(showtext)
+library(sysfonts)
 
 # define script arguments -------------------------------------------------
 parser <- ArgumentParser()
@@ -31,6 +33,9 @@ parser$add_argument(
   help = "Path to output file",
   default = "results"
 )
+
+font_add_google("Merriweather", "merriweather")
+showtext_auto()
 
 # read data ---------------------------------------------------------------
 args <- parser$parse_args()
@@ -134,7 +139,18 @@ vs_wage_plot <- scored_occupations_2digit %>%
   xlab("Mean wage coefficient") +
   ylab("AI product exposure score") +
   ggtitle("AI product exposure score vs. mean wage coefficient") +
-  theme_minimal()
+  theme_minimal() +
+  theme(text = element_text(family = "merriweather"))
+
+vs_wage_plot_cubic_trend <- scored_occupations_2digit %>%
+  ggplot(aes(x = mean_wage_coefficient, y = ai_product_exposure_score)) +
+  geom_point() +
+  geom_smooth(method = "lm", formula = y ~ poly(x, 3)) +
+  xlab("Mean wage coefficient") +
+  ylab("AI product exposure score") +
+  ggtitle("AI product exposure score vs. mean wage coefficient") +
+  theme_minimal() +
+  theme(text = element_text(family = "merriweather"))
 
 ggplot(scored_occupations_2digit, aes(x = mean_wage_coefficient, y = felten_exposure_score)) +
   geom_point() +
@@ -172,7 +188,18 @@ vs_unemployment_plot <- ggplot(scored_occupations_2digit, aes(x = percent_unempl
   geom_smooth(method = "lm") +
   xlab("% Unemployed in Occupation") +
   ylab("AI product exposure score") +
-  ggtitle("AI product exposure score vs. unemployment rate")
+  ggtitle("AI product exposure score vs. unemployment rate") +
+  theme_minimal() +
+  theme(text = element_text(family = "merriweather"))
+
+vs_unemployment_plot_cubic_trend <- ggplot(scored_occupations_2digit, aes(x = percent_unemployed, y = ai_product_exposure_score)) +
+  geom_point() +
+  geom_smooth(method = "lm", formula = y ~ poly(x, 3)) +
+  xlab("% Unemployed in Occupation") +
+  ylab("AI product exposure score") +
+  ggtitle("AI product exposure score vs. unemployment rate") +
+  theme_minimal() +
+  theme(text = element_text(family = "merriweather"))
 
 cor.test(
   scored_occupations_2digit$ai_product_exposure_score, 
@@ -202,9 +229,10 @@ gray_countries <- c(
 )
 
 europe_map <- ne_countries(scale = "medium", returnclass = "sf") %>%
-  filter(iso_a2 %in% eu_27 | iso_a2 %in% gray_countries | name_en == "France") %>%
+  filter(iso_a2 %in% eu_27 | iso_a2 %in% gray_countries | name_en == "France" | name_en == "Norway") %>%
   mutate(
-    iso_a2 = if_else(name_en == "France", "FR", iso_a2)
+    iso_a2 = if_else(name_en == "France", "FR", iso_a2),
+    iso_a2 = if_else(name_en == "Norway", "NO", iso_a2)
   ) %>%
   left_join(exposure_by_country, by = c("iso_a2" = "country"))
 
@@ -213,6 +241,7 @@ expsure_map <- ggplot(europe_map) +
   geom_sf(aes(fill = ai_product_exposure_score)) +
   scale_fill_gradient(low = "lightblue", high = "darkblue", na.value = "grey50") +
   theme_minimal() +
+  theme(text = element_text(family = "merriweather")) +
   labs(title = "AI Product Exposure Score by Country in Europe",
        fill = "Exposure Score") +
   coord_sf(xlim = c(-10, 40), ylim = c(34, 70))
@@ -220,15 +249,23 @@ expsure_map <- ggplot(europe_map) +
 
 # save results ------------------------------------------------------------
 ggsave(
-  file.path(args$output_dir, "plots", "exposure_vs_wage_plot.png"), 
+  file.path(args$output_dir, "plots", "exposure_vs_wage_plot.svg"), 
   vs_wage_plot, 
-  width = 10, height = 10
+  width = 5, height = 5
 )
 ggsave(
-  file.path(args$output_dir, "plots", "exposure_vs_unemployment_plot.png"), 
-  vs_unemployment_plot, width = 10, height = 10
+  file.path(args$output_dir, "plots", "exposure_vs_unemployment_plot.svg"), 
+  vs_unemployment_plot, width = 5, height = 5
 )
 ggsave(
-  file.path(args$output_dir, "plots", "exposure_map.png"), 
-  expsure_map, width = 10, height = 10
+  file.path(args$output_dir, "plots", "exposure_vs_wage_plot_cubic_trend.svg"), 
+  vs_wage_plot_cubic_trend, width = 5, height = 5
+)
+ggsave(
+  file.path(args$output_dir, "plots", "exposure_vs_unemployment_plot_cubic_trend.svg"), 
+  vs_unemployment_plot_cubic_trend, width = 5, height = 5
+)
+ggsave(
+  file.path(args$output_dir, "plots", "exposure_map.svg"), 
+  expsure_map, width = 5, height = 5
 )

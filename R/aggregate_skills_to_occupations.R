@@ -1,5 +1,7 @@
 library(tidyverse)
 library(argparse)
+library(showtext)
+library(sysfonts)
 
 # define script arguments -------------------------------------------------
 parser <- ArgumentParser()
@@ -64,6 +66,9 @@ parser$add_argument(
   help = "Path to output file",
   default = "results"
 )
+
+font_add_google("Merriweather", "merriweather")
+showtext_auto()
 
 # define functions --------------------------------------------------------
 aggregate_score_to_occupation_level <- function(
@@ -226,7 +231,8 @@ plot_research_skills <- function(
     guides(color = guide_legend(override.aes = list(
       linetype = c("solid", "blank"),  # 'blank' makes the line disappear for the dots
       shape = c(NA, 16)                # NA for no shape for the line, 16 for a dot
-    )))
+    ))) +
+    theme(text = element_text(family = "merriweather"))
 }
 
 plot_research_skills_boxplot <- function(
@@ -240,7 +246,8 @@ plot_research_skills_boxplot <- function(
       title = "Similarity of Research Skills to AI Product Capabilities",
       x = "Research-relevant skills",
       y = "AI Capability/Job Skill Similarity Score"
-    )
+    ) +
+    theme(text = element_text(family = "merriweather"))
 }
 
 aggregate_skills_to_groups <- function(
@@ -373,9 +380,21 @@ occupation_scores_level_2_plot <- scored_occupations_with_group_labels %>%
   mutate(group_mean = mean(ai_product_exposure_score)) %>%
   ungroup() %>%
   mutate(
+    isco_level_2_label = ifelse(
+      isco_level_2_label == "Food processing, wood working, garment and other craft and related trades workers",
+      "Craft and related trades workers",
+      isco_level_2_label
+    ),
     isco_level_2_label = factor(
       isco_level_2_label,
       levels = scored_occupations_with_group_labels %>%
+        mutate(
+          isco_level_2_label = ifelse(
+            isco_level_2_label == "Food processing, wood working, garment and other craft and related trades workers",
+            "Craft and related trades workers",
+            isco_level_2_label
+          )
+        ) %>%
         group_by(isco_level_2_label) %>%
         summarize(supergroup_mean = mean(ai_product_exposure_score)) %>%
         arrange((supergroup_mean)) %>%
@@ -386,8 +405,9 @@ occupation_scores_level_2_plot <- scored_occupations_with_group_labels %>%
   geom_jitter(width = 0, height = 0.2, color = "gray", alpha = 0.3) +  # Jittered points in dim gray
   #stat_summary(aes(group = isco_level_3_label), fun = mean, geom = "point", shape = 4, size = 1, color = "black") +  # Group mean as a smaller blue rhombus
   stat_summary(fun = mean, geom = "point", shape = 18, size = 4, color = "red") +  # Supergroup mean as a larger red rhombus
-  labs(x = "Exposure score", y = "Occupation") +
-  theme_minimal()
+  labs(x = "Exposure score", y = "") +
+  theme_minimal() +
+  theme(text = element_text(family = "merriweather"))
 
 occupation_scores_level_1_plot <- scored_occupations_with_group_labels %>%
   group_by(isco_level_1, isco_level_2) %>%
@@ -426,7 +446,7 @@ research_skills_plot <- plot_research_skills(
 research_skills_box_plot <- plot_research_skills_boxplot(
   scored_skills,
   esco_research_skills
-)
+) + theme(legend.position = "none")
 
 scored_skills_plot <- scored_skill_groups %>%
   filter(!is.na(supergroup_label)) %>%
@@ -558,38 +578,38 @@ write_csv(
 )
 
 ggsave(
-  file.path(args$output_dir, "plots", "research_skills_plot.png"),
-  research_skills_plot,
-  width = 8,
-  height = 6
+  file.path(args$output_dir, "plots", "research_skills_plot.svg"),
+  research_skills_plot + theme(legend.position = "bottom"),
+  width = 7,
+  height = 5
 )
 
 ggsave(
-  file.path(args$output_dir, "plots", "research_skills_boxplot.png"),
-  research_skills_box_plot,
-  width = 8,
-  height = 6
+  file.path(args$output_dir, "plots", "research_skills_boxplot.svg"),
+  research_skills_box_plot + theme(legend.position = "none"),
+  width = 7,
+  height = 5
 )
 
 ggsave(
-  file.path(args$output_dir, "plots", "scored_skills_plot.png"),
+  file.path(args$output_dir, "plots", "scored_skills_plot.svg"),
   scored_skills_plot,
-  width = 8,
-  height = 6
+  width = 5,
+  height = 3
 )
 
 ggsave(
-  file.path(args$output_dir, "plots", "occupation_scores_level_2_plot.png"),
+  file.path(args$output_dir, "plots", "occupation_scores_level_2_plot.svg"),
   occupation_scores_level_2_plot,
-  width = 8,
-  height = 6
+  width = 9,
+  height = 7
 )
 
 ggsave(
-  file.path(args$output_dir, "plots", "occupation_scores_level_1_plot.png"),
+  file.path(args$output_dir, "plots", "occupation_scores_level_1_plot.svg"),
   occupation_scores_level_1_plot,
-  width = 8,
-  height = 6
+  width = 9,
+  height = 5
 )
 
 
