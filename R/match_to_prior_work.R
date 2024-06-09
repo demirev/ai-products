@@ -54,11 +54,8 @@ font_add_google("Merriweather", "merriweather")
 showtext_auto()
 
 # functions ---------------------------------------------------------------
-match_to_webb <- function(
-  scored_occupations,
-  webb_data,
-  webb_crosswalk,
-  esco_crosswalk
+convert_to_soc <- function(
+  scored_occupations
 ) {
   scored_occupations %>%
     inner_join(
@@ -82,7 +79,17 @@ match_to_webb <- function(
         paste0(
           collapse = ",, " # unique separator, so that I don't split actual commas in title below
         )
-    ) %>%
+    )
+}
+
+match_to_webb <- function(
+  scored_occupations,
+  webb_data,
+  webb_crosswalk,
+  esco_crosswalk
+) {
+  scored_occupations %>%
+    convert_to_soc() %>%
     inner_join(
       webb_crosswalk %>%
         select(
@@ -436,6 +443,9 @@ scored_groups_matched <- aggregate_all_to_3digit_isco(
 ) %>%
   arrange(desc(ai_product_exposure_score))
 
+soc_equivalent <- scored_occupations %>%
+  convert_to_soc()
+
 scored_groups_matched <- scored_groups_matched %>%
   left_join(
     isco_groups %>%
@@ -508,6 +518,15 @@ write_csv(
 #   scored_groups_matched,
 #   "results/occupational_exposure_to_ai_products/scored_esco_occupations_isco_3_digit_matched.csv"
 # )
+
+write_csv(
+  soc_equivalent,
+  file.path(
+    args$output_dir,
+    "occupational_exposure_to_ai_products",
+    "scored_soc_equivalent_occupations.csv"
+  )
+)
 
 ggsave(
   file.path(
