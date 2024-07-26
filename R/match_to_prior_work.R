@@ -14,10 +14,22 @@ parser$add_argument(
   default = "data/webb/exposure_by_occ1990dd_lswt2010.csv"
 )
 parser$add_argument(
+  "--webb_additional",
+  type = "character",
+  help = "Path to additional Webb 2022 data",
+  default = "data/webb/final_df_out.dta"
+)
+parser$add_argument(
   "--webb_crosswalk", 
   type = "character",
   help = "Path to crosswalk between Webb 2022 and occ1990dd", 
   default = "data/webb/onet_to_occ1990dd.dta"
+)
+parser$add_argument(
+  "--eloundou_data",
+  type = "character",
+  help = "Path to Eloundou et al. data",
+  default = "data/eloundou_et_al/full_labelset.tsv"
 )
 parser$add_argument(
   "--esco_crosswalk", 
@@ -118,6 +130,13 @@ match_to_webb <- function(
       webb_data,
       by = c("occ1990dd" = "occ1990dd", "occ1990dd_title" = "occ1990dd_title")
     )
+  
+  # scored_occupations %>%
+  #   convert_to_soc() %>%
+  #   right_join(
+  #     webb_alt,
+  #     by = c("onet_id" = "onetsoccode")
+  #   )
 }
 
 match_from_webb <- function(
@@ -263,12 +282,153 @@ match_from_felten <- function(
     )
 }
 
+match_to_eloundou <- function(
+  scored_occupations,
+  eloundou_data,
+  esco_crosswalk,
+  onet_weights_file = "data/eloundou_et_al/task_weights.tsv"
+) {
+  
+  onet_weights <- read_tsv(onet_weights_file) %>%
+    filter(`Scale ID` == "IM") %>% # importance weights
+    select(
+      task_id = `Task ID`,
+      weight = `Data Value`
+    )
+  
+  names(eloundou_data)[1:6] <- c(
+    "n", "soc_code",
+    "task_id", "task", "task_type",
+    "title"
+  )
+  
+  eloundou_data %>%
+    left_join(
+      onet_weights,
+      by = c("task_id" = "task_id")
+    ) %>%
+    mutate(
+      weight = ifelse(
+        is.na(weight),
+        mean(weight, na.rm = TRUE),
+        weight
+      ) # some SOC codes have no weights - assume equal weighting
+    ) %>%
+    group_by(
+      soc_code,
+      title
+    ) %>%
+    summarise(
+      beta_eloundou = weighted.mean(beta, weight)
+    ) %>%
+    left_join(
+      esco_crosswalk %>%
+        mutate(
+          soc_code = onet_id #substr(onet_id, 1, 7)
+        ) %>%
+        select(soc_code, onet_title, esco_uri) %>%
+        left_join(
+          scored_occupations %>%
+            select(
+              esco_uri = occupation_uri,
+              ai_product_exposure_score = ai_product_exposure_score
+            ),
+          by = c("esco_uri" = "esco_uri")
+        ) %>%
+        group_by(
+          soc_code
+        ) %>%
+        summarise(
+          ai_product_exposure_score = mean(ai_product_exposure_score)
+        ),
+      by = c("soc_code" = "soc_code")
+    ) %>%
+    ungroup()
+}    
+
+match_from_eloundou <- function(
+  scored_occupations,
+  eloundou_data,
+  esco_crosswalk,
+  onet_weights_file = "data/eloundou_et_al/task_weights.tsv"
+) {
+  names(eloundou_data)[1:6] <- c(
+    "n", "soc_code",
+    "task_id", "task", "task_type",
+    "title"
+  )
+  
+  onet_weights <- read_tsv(onet_weights_file) %>%
+    filter(`Scale ID` == "IM") %>% # importance weights
+    select(
+      task_id = `Task ID`,
+      weight = `Data Value`
+    )
+  
+  eloundou_data %>%
+    left_join(
+      onet_weights,
+      by = c("task_id" = "task_id")
+    ) %>%
+    mutate(
+      weight = ifelse(
+        is.na(weight),
+        mean(weight, na.rm = TRUE),
+        weight
+      ) # some SOC codes have no weights - assume equal weighting
+    ) %>%
+    group_by(
+      soc_code,
+      title
+    ) %>%
+    summarise(
+      beta_eloundou = weighted.mean(beta, weight)
+    ) %>%
+    left_join(
+      esco_crosswalk %>%
+        mutate(
+          soc_code = onet_id #substr(onet_id, 1, 7)
+        ) %>%
+        select(soc_code, onet_title, esco_uri)
+    ) %>%
+    group_by(
+      esco_uri
+    ) %>%
+    summarise(
+      beta_eloundou = mean(beta_eloundou),
+      matched_onet_id_from_eloundou = soc_code %>%
+        unique() %>%
+        sort() %>%
+        paste0(
+          collapse = ", "
+        ),
+      matched_onet_title_from_eloundou = onet_title %>%
+        unique() %>%
+        sort() %>%
+        paste0(
+          collapse = ", "
+        )
+    ) %>%
+    right_join(
+      scored_occupations,
+      by = c("esco_uri" = "occupation_uri")
+    ) %>%
+    select(
+      everything(), 
+      beta_eloundou,
+      matched_onet_id_from_eloundou, matched_onet_title_from_eloundou
+    )
+}    
+
+
 match_from_all <- function(
   scored_occupations,
   felten_data,
   webb_data,
+  eloundou_data,
   webb_crosswalk,
-  esco_crosswalk
+  esco_crosswalk,
+  onet_weights_file = "data/eloundou_et_al/task_weights.tsv"
 ) {
   matched_felten <- scored_occupations %>%
     match_from_felten(
@@ -296,6 +456,19 @@ match_from_all <- function(
       matched_onet_id_from_webb,
     )
   
+  matched_eloundou <- scored_occupations %>%
+    match_from_eloundou(
+      eloundou_data,
+      esco_crosswalk,
+      onet_weights_file
+    ) %>%
+    select(
+      esco_uri,
+      beta_eloundou,
+      matched_onet_title_from_eloundou,
+      matched_onet_id_from_eloundou
+    )
+  
   scored_occupations %>%
     left_join(
       matched_felten,
@@ -303,6 +476,10 @@ match_from_all <- function(
     ) %>%
     left_join(
       matched_webb,
+      by = c("occupation_uri" = "esco_uri")
+    ) %>%
+    left_join(
+      matched_eloundou,
       by = c("occupation_uri" = "esco_uri")
     )
 }
@@ -343,6 +520,56 @@ aggregate_felten_to_4digit_onet <- function(
     ) %>%
     summarise(
       felten_exposure_score = mean(aioe)
+    )
+}
+
+aggregate_eloundou_to_4digit_onet <- function(
+  eloundou_data,
+  onet_weights_file = "data/eloundou_et_al/task_weights.tsv"
+) {
+  
+  names(eloundou_data)[1:6] <- c(
+    "n", "soc_code",
+    "task_id", "task", "task_type",
+    "title"
+  )
+  
+  onet_weights <- read_tsv(onet_weights_file) %>%
+    filter(`Scale ID` == "IM") %>% # importance weights
+    select(
+      task_id = `Task ID`,
+      weight = `Data Value`
+    )
+  
+  eloundou_data <- eloundou_data %>%
+    left_join(
+      onet_weights,
+      by = c("task_id" = "task_id")
+    ) %>%
+    mutate(
+      weight = ifelse(
+        is.na(weight),
+        mean(weight, na.rm = TRUE),
+        weight
+      ) # some SOC codes have no weights - assume equal weighting
+    ) %>%
+    group_by(
+      soc_code,
+      title
+    ) %>%
+    summarise(
+      beta_eloundou = weighted.mean(beta, weight)
+    ) 
+  
+  eloundou_data %>%
+    mutate(
+      onet_4digit = substr(soc_code, 1, 5) # e.g. 11-1011.03 to 11-10
+    ) %>%
+    group_by(
+      onet_4digit
+    ) %>%
+    summarise(
+      beta_eloundou = mean(beta_eloundou)
     )
 }
 
@@ -412,6 +639,12 @@ aggregate_all_to_3digit_isco <- function(
         felten_data
       ),
       by = c("onet_4digit" = "onet_4digit")
+    ) %>%
+    left_join(
+      aggregate_eloundou_to_4digit_onet(
+        eloundou_data
+      ),
+      by = c("onet_4digit" = "onet_4digit")
     )
 }
 
@@ -420,11 +653,12 @@ aggregate_all_to_3digit_isco <- function(
 args <- parser$parse_args()
 
 webb_data <- read_csv(args$webb_data)
-#webb_df <- read_dta("data/webb/final_df_out.dta")
+webb_alt <- read_dta(args$webb_additional)
 webb_crosswalk <- read_dta(args$webb_crosswalk)
 esco_crosswalk <- read_csv(args$esco_crosswalk)
 isco_groups <- read_csv(args$isco_groups)
 felten_data <- read_csv(args$felten_data)
+eloundou_data <- read_tsv(args$eloundou_data)
 
 scored_occupations <- read_csv(args$scored_occupations)
 
@@ -433,6 +667,7 @@ scored_occupations_matched <- scored_occupations %>%
   match_from_all(
     felten_data,
     webb_data,
+    eloundou_data,
     webb_crosswalk,
     esco_crosswalk
   )
@@ -503,6 +738,23 @@ list(
     ) %>%
     arrange(ai_product_exposure_score)
 )
+
+vs_eloundou_plot <- scored_groups_matched %>%
+  ggplot(aes(
+    x = ai_product_exposure_score,
+    y = beta_eloundou
+  )) +
+  geom_point() +
+  geom_smooth(method = "lm") +
+  labs(
+    x = "AI Product Exposure Score",
+    y = "Eloundou Exposure Score"
+  ) +
+  # add gray dashed lines at x = 0 and y = 0
+  geom_vline(xintercept = 0, linetype = "dashed", color = "gray") +
+  geom_hline(yintercept = 0.5, linetype = "dashed", color = "gray") +
+  theme_minimal() +
+  theme(text = element_text(family = "merriweather"))
 
 # write results -----------------------------------------------------------
 write_csv(
