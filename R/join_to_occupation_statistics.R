@@ -51,7 +51,8 @@ scored_occupations_2digit <- scored_occupations %>%
   summarise(
     ai_product_exposure_score = mean(ai_product_exposure_score, na.rm = T),
     felten_exposure_score = mean(felten_exposure_score, na.rm = T),
-    webb_exposure_score = mean(webb_exposure_score, na.rm = T)
+    webb_exposure_score = mean(webb_exposure_score, na.rm = T),
+    eloundou_exposure_score = mean(beta_eloundou, na.rm = T),
   )
 
 ses_coefficients <- ses_coefficients %>%
@@ -138,7 +139,7 @@ vs_wage_plot <- scored_occupations_2digit %>%
   geom_smooth(method = "lm") +
   xlab("Mean wage coefficient") +
   ylab("AI product exposure score") +
-  ggtitle("AI product exposure score vs. mean wage coefficient") +
+  ggtitle("AI product exposure score vs. wage premium") +
   theme_minimal() +
   theme(text = element_text(family = "merriweather"))
 
@@ -148,42 +149,63 @@ vs_wage_plot_cubic_trend <- scored_occupations_2digit %>%
   geom_smooth(method = "lm", formula = y ~ poly(x, 3)) +
   xlab("Mean wage coefficient") +
   ylab("AI product exposure score") +
-  ggtitle("AI product exposure score vs. mean wage coefficient") +
+  ggtitle("AI product exposure score vs. wage premium") +
   theme_minimal() +
   theme(text = element_text(family = "merriweather"))
 
-ggplot(scored_occupations_2digit, aes(x = mean_wage_coefficient, y = felten_exposure_score)) +
+vs_wage_felten_plot <- scored_occupations_2digit %>%
+  ggplot(aes(x = mean_wage_coefficient, y = felten_exposure_score)) +
   geom_point() +
   geom_smooth(method = "loess") +
   xlab("Mean wage coefficient") +
   ylab("Felten exposure score") +
-  ggtitle("Felten exposure score vs. mean wage coefficient") +
-  theme_minimal()
+  ggtitle("Felten exposure score vs. wage premium") +
+  theme_minimal() +
+  theme(text = element_text(family = "merriweather"))
 
-ggplot(scored_occupations_2digit, aes(x = mean_wage_coefficient, y = webb_exposure_score)) +
+vs_wage_webb_plot <- scored_occupations_2digit %>% 
+  ggplot(aes(x = mean_wage_coefficient, y = webb_exposure_score)) +
+  geom_point() +
+  geom_smooth(method = "lm") +
+  xlab("Mean wage coefficient") +
+  ylab("Webb exposure score") +
+  ggtitle("Webb exposure score vs. wage premium") +
+  theme_minimal() +
+  theme(text = element_text(family = "merriweather"))
+
+vs_wage_eloundou_plot <- scored_occupations_2digit %>% 
+  ggplot(aes(x = mean_wage_coefficient, y = eloundou_exposure_score)) +
   geom_point() +
   geom_smooth(method = "loess") +
   xlab("Mean wage coefficient") +
-  ylab("Webb exposure score") +
-  ggtitle("Webb exposure score vs. mean wage coefficient")
+  ylab("Eloundou exposure score") +
+  ggtitle("Eloundou exposure score vs. wage premium") +
+  theme_minimal() +
+  theme(text = element_text(family = "merriweather"))
 
-ggplot(scored_occupations_2digit, aes(x = total_employment, y = ai_product_exposure_score)) +
+vs_employment_plot <- scored_occupations_2digit %>%
+  ggplot(aes(x = total_employment, y = ai_product_exposure_score)) +
   geom_point() +
-  geom_smooth(method = "loess") +
+  geom_smooth(method = "lm") +
+  scale_x_continuous(labels = scales::comma) + 
   xlab("Total employment") +
   ylab("AI product exposure score") +
-  ggtitle("AI product exposure score vs. total employment")
+  ggtitle("AI product exposure score vs. total employment") +
+  theme_minimal() +
+  theme(text = element_text(family = "merriweather"))
 
-
-ggplot(scored_occupations_2digit, aes(x = percent_women, y = ai_product_exposure_score)) +
+vs_perc_women_plot <- scored_occupations_2digit %>%
+  ggplot(aes(x = percent_women, y = ai_product_exposure_score)) +
   geom_point() +
-  geom_smooth(method = "loess") +
+  geom_smooth(method = "lm") +
   xlab("% Women in Occupation") +
   ylab("AI product exposure score") +
-  ggtitle("AI product exposure score vs. total employment")
+  ggtitle("AI product exposure score vs. % Women") +
+  theme_minimal() +
+  theme(text = element_text(family = "merriweather"))
 
-
-vs_unemployment_plot <- ggplot(scored_occupations_2digit, aes(x = percent_unemployed, y = ai_product_exposure_score)) +
+vs_unemployment_plot <- scored_occupations_2digit %>%
+  ggplot(aes(x = percent_unemployed, y = ai_product_exposure_score)) +
   geom_point() +
   geom_smooth(method = "lm") +
   xlab("% Unemployed in Occupation") +
@@ -192,7 +214,8 @@ vs_unemployment_plot <- ggplot(scored_occupations_2digit, aes(x = percent_unempl
   theme_minimal() +
   theme(text = element_text(family = "merriweather"))
 
-vs_unemployment_plot_cubic_trend <- ggplot(scored_occupations_2digit, aes(x = percent_unemployed, y = ai_product_exposure_score)) +
+vs_unemployment_plot_cubic_trend <- scored_occupations_2digit %>%
+  ggplot(aes(x = percent_unemployed, y = ai_product_exposure_score)) +
   geom_point() +
   geom_smooth(method = "lm", formula = y ~ poly(x, 3)) +
   xlab("% Unemployed in Occupation") +
@@ -201,21 +224,115 @@ vs_unemployment_plot_cubic_trend <- ggplot(scored_occupations_2digit, aes(x = pe
   theme_minimal() +
   theme(text = element_text(family = "merriweather"))
 
-cor.test(
-  scored_occupations_2digit$ai_product_exposure_score, 
-  scored_occupations_2digit$mean_wage_coefficient
+vs_unemployment_plot_felten <- scored_occupations_2digit %>%
+  ggplot(aes(x = percent_unemployed, y = felten_exposure_score)) +
+  geom_point() +
+  geom_smooth(method = "lm") +
+  xlab("% Unemployed in Occupation") +
+  ylab("Felten exposure score") +
+  ggtitle("Felten exposure score vs. unemployment rate") +
+  theme_minimal() +
+  theme(text = element_text(family = "merriweather"))
+
+vs_unemployment_plot_webb <- scored_occupations_2digit %>%
+  ggplot(aes(x = percent_unemployed, y = webb_exposure_score)) +
+  geom_point() +
+  geom_smooth(method = "lm") +
+  xlab("% Unemployed in Occupation") +
+  ylab("Webb exposure score") +
+  ggtitle("Webb exposure score vs. unemployment rate") +
+  theme_minimal() +
+  theme(text = element_text(family = "merriweather"))
+
+vs_unemployment_plot_eloundou <- scored_occupations_2digit %>%
+  ggplot(aes(x = percent_unemployed, y = eloundou_exposure_score)) +
+  geom_point() +
+  geom_smooth(method = "lm") +
+  xlab("% Unemployed in Occupation") +
+  ylab("Eloundou exposure score") +
+  ggtitle("Eloundou exposure score vs. unemployment rate") +
+  theme_minimal() +
+  theme(text = element_text(family = "merriweather"))
+
+list(
+  r_product_exposure_wages = cor.test(
+    scored_occupations_2digit$ai_product_exposure_score, 
+    scored_occupations_2digit$mean_wage_coefficient
+  ),
+  r_felten_wages = cor.test(
+    scored_occupations_2digit$felten_exposure_score, 
+    scored_occupations_2digit$mean_wage_coefficient
+  ),
+  r_webb_wages = cor.test(
+    scored_occupations_2digit$webb_exposure_score, 
+    scored_occupations_2digit$mean_wage_coefficient
+  ),
+  r_eloundou_wages = cor.test(
+    scored_occupations_2digit$eloundou_exposure_score, 
+    scored_occupations_2digit$mean_wage_coefficient
+  )
 )
 
-cor.test(
-  scored_occupations_2digit$ai_product_exposure_score, 
-  scored_occupations_2digit$percent_unemployed
+list(
+  r_product_exposure_unemployment = cor.test(
+    scored_occupations_2digit$ai_product_exposure_score, 
+    scored_occupations_2digit$percent_unemployed
+  ),
+  r_felten_unemployment = cor.test(
+    scored_occupations_2digit$felten_exposure_score, 
+    scored_occupations_2digit$percent_unemployed
+  ),
+  r_webb_unemployment = cor.test(
+    scored_occupations_2digit$webb_exposure_score, 
+    scored_occupations_2digit$percent_unemployed
+  ),
+  r_eloundou_unemployment = cor.test(
+    scored_occupations_2digit$eloundou_exposure_score, 
+    scored_occupations_2digit$percent_unemployed
+  )
 )
 
-cor.test(
-  scored_occupations_2digit$felten_exposure_score, 
-  scored_occupations_2digit$mean_wage_coefficient
+# same for employment
+list(
+  r_product_exposure_employment = cor.test(
+    scored_occupations_2digit$ai_product_exposure_score, 
+    scored_occupations_2digit$total_employment
+  ),
+  r_felten_employment = cor.test(
+    scored_occupations_2digit$felten_exposure_score, 
+    scored_occupations_2digit$total_employment
+  ),
+  r_webb_employment = cor.test(
+    scored_occupations_2digit$webb_exposure_score, 
+    scored_occupations_2digit$total_employment
+  ),
+  r_eloundou_employment = cor.test(
+    scored_occupations_2digit$eloundou_exposure_score, 
+    scored_occupations_2digit$total_employment
+  )
 )
 
+# same for percent women
+list(
+  r_product_exposure_women = cor.test(
+    scored_occupations_2digit$ai_product_exposure_score, 
+    scored_occupations_2digit$percent_women
+  ),
+  r_felten_women = cor.test(
+    scored_occupations_2digit$felten_exposure_score, 
+    scored_occupations_2digit$percent_women
+  ),
+  r_webb_women = cor.test(
+    scored_occupations_2digit$webb_exposure_score, 
+    scored_occupations_2digit$percent_women
+  ),
+  r_eloundou_women = cor.test(
+    scored_occupations_2digit$eloundou_exposure_score, 
+    scored_occupations_2digit$percent_women
+  )
+)
+
+# make map ----------------------------------------------------------------
 eu_27 <- c(
   "AT", "BE", "BG", "CY", "CZ", "DE", "DK", "EE", "ES", "FI", 
   "FR", "GR", "HR", "HU", "IE", "IT", "LT", "LU", "LV", "MT", 
@@ -242,30 +359,50 @@ expsure_map <- ggplot(europe_map) +
   scale_fill_gradient(low = "lightblue", high = "darkblue", na.value = "grey50") +
   theme_minimal() +
   theme(text = element_text(family = "merriweather")) +
-  labs(title = "AI Product Exposure Score by Country in Europe",
+  labs(title = "AI Product Exposure Score by Country",
        fill = "Exposure Score") +
+  # remove axis labels
+  theme(axis.text.x = element_blank(), axis.text.y = element_blank(),
+        axis.title.x = element_blank(), axis.title.y = element_blank(),
+        axis.ticks = element_blank()) +
   coord_sf(xlim = c(-10, 40), ylim = c(34, 70))
 
 
 # save results ------------------------------------------------------------
 ggsave(
-  file.path(args$output_dir, "plots", "exposure_vs_wage_plot.svg"), 
+  file.path(args$output_dir, "plots", "exposure_vs_wage_plot.eps"), 
   vs_wage_plot, 
-  width = 5, height = 5
+  width = 5, height = 5,
+  device = cairo_ps
+)
+ggsave(filename = 
+  file.path(args$output_dir, "plots", "exposure_vs_unemployment_plot.eps"), 
+  vs_unemployment_plot, 
+  width = 5, height = 5,
+  device = cairo_ps
 )
 ggsave(
-  file.path(args$output_dir, "plots", "exposure_vs_unemployment_plot.svg"), 
-  vs_unemployment_plot, width = 5, height = 5
+  file.path(args$output_dir, "plots", "exposure_vs_wage_plot_cubic_trend.eps"), 
+  vs_wage_plot_cubic_trend, width = 5, height = 5,
+  device = cairo_ps
 )
 ggsave(
-  file.path(args$output_dir, "plots", "exposure_vs_wage_plot_cubic_trend.svg"), 
-  vs_wage_plot_cubic_trend, width = 5, height = 5
+  file.path(args$output_dir, "plots", "exposure_vs_unemployment_plot_cubic_trend.eps"), 
+  vs_unemployment_plot_cubic_trend, width = 5, height = 5,
+  device = cairo_ps
 )
 ggsave(
-  file.path(args$output_dir, "plots", "exposure_vs_unemployment_plot_cubic_trend.svg"), 
-  vs_unemployment_plot_cubic_trend, width = 5, height = 5
+  file.path(args$output_dir, "plots", "exposure_vs_employment_plot.eps"), 
+  vs_employment_plot, width = 5, height = 5,
+  device = cairo_ps
 )
 ggsave(
-  file.path(args$output_dir, "plots", "exposure_map.svg"), 
-  expsure_map, width = 5, height = 5
+  file.path(args$output_dir, "plots", "exposure_vs_percent_women_plot.eps"), 
+  vs_perc_women_plot, width = 5, height = 5,
+  device = cairo_ps
+)
+ggsave(
+  file.path(args$output_dir, "plots", "exposure_map.eps"), 
+  expsure_map, width = 5, height = 5,
+  device = cairo_ps
 )

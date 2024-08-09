@@ -402,12 +402,40 @@ occupation_scores_level_2_plot <- scored_occupations_with_group_labels %>%
     )
   ) %>%
   ggplot(aes(x = ai_product_exposure_score, y = isco_level_2_label)) +
-  geom_jitter(width = 0, height = 0.2, color = "gray", alpha = 0.3) +  # Jittered points in dim gray
+  geom_jitter(width = 0, height = 0.2, color = "lightgray") +  # Jittered points in dim gray
   #stat_summary(aes(group = isco_level_3_label), fun = mean, geom = "point", shape = 4, size = 1, color = "black") +  # Group mean as a smaller blue rhombus
   stat_summary(fun = mean, geom = "point", shape = 18, size = 4, color = "red") +  # Supergroup mean as a larger red rhombus
   labs(x = "Exposure score", y = "") +
   theme_minimal() +
   theme(text = element_text(family = "merriweather"))
+
+occupation_scores_level_2_table <- scored_occupations_with_group_labels %>%
+  group_by(isco_level_2, isco_level_2_label) %>%
+  summarize(group_mean = mean(ai_product_exposure_score)) %>%
+  ungroup() %>%
+  mutate(
+    isco_level_2_label = ifelse(
+      isco_level_2_label == "Food processing, wood working, garment and other craft and related trades workers",
+      "Craft and related trades workers",
+      isco_level_2_label
+    ),
+    isco_level_2_label = factor(
+      isco_level_2_label,
+      levels = scored_occupations_with_group_labels %>%
+        mutate(
+          isco_level_2_label = ifelse(
+            isco_level_2_label == "Food processing, wood working, garment and other craft and related trades workers",
+            "Craft and related trades workers",
+            isco_level_2_label
+          )
+        ) %>%
+        group_by(isco_level_2_label) %>%
+        summarize(supergroup_mean = mean(ai_product_exposure_score)) %>%
+        arrange((supergroup_mean)) %>%
+        pull(isco_level_2_label)
+    )
+  ) %>%
+  print(n = Inf)
 
 occupation_scores_level_1_plot <- scored_occupations_with_group_labels %>%
   group_by(isco_level_1, isco_level_2) %>%
@@ -467,7 +495,7 @@ scored_skills_plot <- scored_skill_groups %>%
   #geom_jitter(width = 0, height = 0.2, color = "gray", alpha = 0.3) +  # Jittered points in dim gray
   stat_summary(aes(group = group_label), fun = mean, geom = "point", shape = 4, size = 1, color = "black") +  # Group mean as a smaller blue rhombus
   stat_summary(fun = mean, geom = "point", shape = 18, size = 4, color = "red") +  # Supergroup mean as a larger red rhombus
-  labs(x = "Max Similarity (Standardized)", y = "Supergroup Label") +
+  labs(x = "Average Similarity Score", y = "Supergroup Label") +
   theme_minimal() +
   labs(y = "")
 
@@ -476,7 +504,9 @@ scored_skill_groups %>%
   group_by(supergroup_label, group_label) %>%
   summarize(group_mean = mean(max_similarity_standardized)) %>%
   arrange(supergroup_label, group_mean) %>%    
-  print(n = Inf) # TODO some unintuitive results
+  arrange(desc(group_mean)) %>%
+  filter(!supergroup_label == group_label) %>%
+  print(n = Inf) 
 
 
 # save results ------------------------------------------------------------
@@ -578,38 +608,51 @@ write_csv(
 )
 
 ggsave(
-  file.path(args$output_dir, "plots", "research_skills_plot.svg"),
+  file.path(args$output_dir, "plots", "research_skills_plot.eps"),
   research_skills_plot + theme(legend.position = "bottom"),
   width = 7,
   height = 5
 )
 
 ggsave(
-  file.path(args$output_dir, "plots", "research_skills_boxplot.svg"),
+  file.path(args$output_dir, "plots", "research_skills_boxplot.eps"),
   research_skills_box_plot + theme(legend.position = "none"),
   width = 7,
   height = 5
 )
 
 ggsave(
-  file.path(args$output_dir, "plots", "scored_skills_plot.svg"),
+  file.path(args$output_dir, "plots", "scored_skills_plot.eps"),
   scored_skills_plot,
   width = 5,
   height = 3
 )
 
 ggsave(
-  file.path(args$output_dir, "plots", "occupation_scores_level_2_plot.svg"),
+  file.path(args$output_dir, "plots", "occupation_scores_level_2_plot.eps"),
   occupation_scores_level_2_plot,
   width = 9,
   height = 7
 )
 
 ggsave(
-  file.path(args$output_dir, "plots", "occupation_scores_level_1_plot.svg"),
+  file.path(args$output_dir, "plots", "occupation_scores_level_1_plot.eps"),
   occupation_scores_level_1_plot,
   width = 9,
   height = 5
 )
 
+scored_occupations %>%
+  group_by(isco_level_3 = substr(isco_group, 1, 3)) %>%
+  summarise(
+    #n_occupations = n(),
+    ai_product_exposure_score = mean(ai_product_exposure_score)
+  ) %>%
+  arrange(desc(ai_product_exposure_score)) %>%
+  left_join(
+    isco_groups %>% select(preferredLabel, code), by = c("isco_level_3" = "code")
+  ) %>% 
+  print(n = Inf) %>% # for table
+  slice(c(1:15, (n() - 14):n())) %>%
+  print(n = Inf)
 

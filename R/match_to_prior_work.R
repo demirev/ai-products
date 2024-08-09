@@ -693,18 +693,64 @@ scored_groups_matched <- scored_groups_matched %>%
   ) %>%
   select(isco_3digit, group_label, everything())
 
+# calculate pairwise correlations ----------------------------------------
+correlations <- scored_occupations_matched %>%
+  select(
+    ai_product_exposure_score,
+    felten_exposure_score,
+    webb_exposure_score,
+    beta_eloundou
+  ) %>%
+  as.matrix() %>%
+  Hmisc::rcorr() %>%
+  (function(x) {
+    tibble(
+      var1 = rep(colnames(x$r), each = ncol(x$r)),
+      var2 = rep(colnames(x$r), ncol(x$r)),
+      r = as.vector(x$r),
+      p = as.vector(x$P),
+      n = as.vector(x$n)
+    )
+  }) %>%
+  filter(var1 != var2) %>%
+  filter(!duplicated(r))
 
+correlations_grouped <- scored_groups_matched %>%
+  select(
+    ai_product_exposure_score,
+    felten_exposure_score,
+    webb_exposure_score,
+    beta_eloundou
+  ) %>%
+  as.matrix() %>%
+  Hmisc::rcorr() %>%
+  (function(x) {
+    tibble(
+      var1 = rep(colnames(x$r), each = ncol(x$r)),
+      var2 = rep(colnames(x$r), ncol(x$r)),
+      r = as.vector(x$r),
+      p = as.vector(x$P),
+      n = as.vector(x$n)
+    )
+  }) %>%
+  filter(var1 != var2) %>%
+  filter(!duplicated(r))
+
+# plots -------------------------------------------------------------------
 # ggplot of ai_product_exposure_score vs felten_exposure_score
-vs_felten_plot <- scored_groups_matched %>%
+vs_felten_plot <- scored_occupations_matched %>%
   ggplot(aes(
-    x = ai_product_exposure_score,
-    y = felten_exposure_score
+    y = ai_product_exposure_score,
+    x = felten_exposure_score
   )) +
-  geom_point() +
+  geom_point(
+    # dark grey points
+    color = "darkgray"
+  ) +
   geom_smooth(method = "lm") +
   labs(
-    x = "AI Product Exposure Score",
-    y = "Felten Exposure Score"
+    y = "AI Product Exposure Score",
+    x = "Felten Exposure Score"
   ) +
   # add gray dashed lines at x = 0 and y = 0
   geom_vline(xintercept = 0, linetype = "dashed", color = "gray") +
@@ -712,8 +758,30 @@ vs_felten_plot <- scored_groups_matched %>%
   theme_minimal() +
   theme(text = element_text(family = "merriweather"))
 
+vs_felten_plot_grouped <- scored_groups_matched %>%
+  ggplot(aes(
+    y = ai_product_exposure_score,
+    x = felten_exposure_score
+  )) +
+  geom_point(
+    # dark grey points
+    color = "darkgray"
+  ) +
+  geom_smooth(method = "lm") +
+  labs(
+    y = "AI Product Exposure Score",
+    x = "Felten Exposure Score"
+  ) +
+  # add gray dashed lines at x = 0 and y = 0
+  geom_vline(xintercept = 0, linetype = "dashed", color = "gray") +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "gray") +
+  theme_minimal() +
+  theme(text = element_text(family = "merriweather"))
+
+# examples pf differences with felten
 list(
-  high_felten_low_product_exposure = scored_groups_matched %>%
+  # by group
+  high_felten_low_product_exposure_groups = scored_groups_matched %>%
     filter(
       felten_exposure_score > 0,
       ai_product_exposure_score < 0
@@ -725,7 +793,7 @@ list(
       felten_exposure_score
     ) %>%
     arrange(desc(felten_exposure_score)),
-  low_felten_high_product_exposure = scored_groups_matched %>%
+  low_felten_high_product_exposure_groups = scored_groups_matched %>%
     filter(
       felten_exposure_score < 0,
       ai_product_exposure_score > 0
@@ -736,25 +804,217 @@ list(
       ai_product_exposure_score,
       felten_exposure_score
     ) %>%
+    arrange(ai_product_exposure_score),
+  # by occupation
+  high_felten_low_product_exposure = scored_occupations_matched %>%
+    filter(
+      felten_exposure_score > 0,
+      ai_product_exposure_score < 0
+    ) %>%
+    select(
+      occupation_title,
+      isco_group,
+      ai_product_exposure_score,
+      felten_exposure_score
+    ) %>%
+    arrange(desc(felten_exposure_score)),
+  low_felten_high_product_exposure = scored_occupations_matched %>%
+    filter(
+      felten_exposure_score < 0,
+      ai_product_exposure_score > 0
+    ) %>%
+    select(
+      occupation_title,
+      isco_group,
+      ai_product_exposure_score,
+      felten_exposure_score
+    ) %>%
     arrange(ai_product_exposure_score)
 )
 
-vs_eloundou_plot <- scored_groups_matched %>%
+vs_eloundou_plot <- scored_occupations_matched %>%
   ggplot(aes(
-    x = ai_product_exposure_score,
-    y = beta_eloundou
+    y = ai_product_exposure_score,
+    x = beta_eloundou
   )) +
-  geom_point() +
+  geom_point(
+    color = "darkgray"
+  ) +
   geom_smooth(method = "lm") +
   labs(
-    x = "AI Product Exposure Score",
-    y = "Eloundou Exposure Score"
+    y = "AI Product Exposure Score",
+    x = "Eloundou Exposure Score"
   ) +
   # add gray dashed lines at x = 0 and y = 0
-  geom_vline(xintercept = 0, linetype = "dashed", color = "gray") +
-  geom_hline(yintercept = 0.5, linetype = "dashed", color = "gray") +
+  geom_vline(xintercept = 0.5, linetype = "dashed", color = "gray") +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "gray") +
   theme_minimal() +
   theme(text = element_text(family = "merriweather"))
+
+vs_eloundou_plot_grouped <- scored_groups_matched %>%
+  ggplot(aes(
+    y = ai_product_exposure_score,
+    x = beta_eloundou
+  )) +
+  geom_point(
+    color = "darkgray"
+  ) +
+  geom_smooth(method = "lm") +
+  labs(
+    y = "AI Product Exposure Score",
+    x = "Eloundou Exposure Score"
+  ) +
+  # add gray dashed lines at x = 0 and y = 0
+  geom_vline(xintercept = 0.5, linetype = "dashed", color = "gray") +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "gray") +
+  theme_minimal() +
+  theme(text = element_text(family = "merriweather"))
+
+# examples of differences with eloundou
+list(
+  # by group
+  high_eloundou_low_product_exposure_groups = scored_groups_matched %>%
+    filter(
+      beta_eloundou > 0.5,
+      ai_product_exposure_score < 0
+    ) %>%
+    select(
+      isco_3digit,
+      group_label,
+      ai_product_exposure_score,
+      beta_eloundou
+    ) %>%
+    arrange(desc(beta_eloundou)),
+  low_eloundou_high_product_exposure_groups = scored_groups_matched %>%
+    filter(
+      beta_eloundou < 0.5,
+      ai_product_exposure_score > 0
+    ) %>%
+    select(
+      isco_3digit,
+      group_label,
+      ai_product_exposure_score,
+      beta_eloundou
+    ) %>%
+    arrange(ai_product_exposure_score),
+  # by occupation
+  high_eloundou_low_product_exposure = scored_occupations_matched %>%
+    filter(
+      beta_eloundou > 0.5,
+      ai_product_exposure_score < 0
+    ) %>%
+    select(
+      occupation_title,
+      isco_group,
+      ai_product_exposure_score,
+      beta_eloundou
+    ) %>%
+    arrange(desc(beta_eloundou)),
+  low_eloundou_high_product_exposure = scored_occupations_matched %>%
+    filter(
+      beta_eloundou < 0.5,
+      ai_product_exposure_score > 0
+    ) %>%
+    select(
+      occupation_title,
+      isco_group,
+      ai_product_exposure_score,
+      beta_eloundou
+    ) %>%
+    arrange(ai_product_exposure_score)
+)
+
+vs_webb_plot <- scored_occupations_matched %>%
+  ggplot(aes(
+    y = ai_product_exposure_score,
+    x = webb_exposure_score
+  )) +
+  geom_point(
+    color = "darkgray"
+  ) +
+  geom_smooth(method = "lm") +
+  labs(
+    y = "AI Product Exposure Score",
+    x = "Webb Exposure Score"
+  ) +
+  # add gray dashed lines at x = 0 and y = 0
+  geom_vline(xintercept = 50, linetype = "dashed", color = "gray") +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "gray") +
+  theme_minimal() +
+  theme(text = element_text(family = "merriweather"))
+
+vs_webb_plot_grouped <- scored_groups_matched %>%
+  ggplot(aes(
+    y = ai_product_exposure_score,
+    x = webb_exposure_score
+  )) +
+  geom_point(
+    color = "darkgray"
+  ) +
+  geom_smooth(method = "lm") +
+  labs(
+    y = "AI Product Exposure Score",
+    x = "Webb Exposure Score"
+  ) +
+  # add gray dashed lines at x = 0 and y = 0
+  geom_vline(xintercept = 50, linetype = "dashed", color = "gray") +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "gray") +
+  theme_minimal() +
+  theme(text = element_text(family = "merriweather"))
+
+# examples of differences with webb
+list(
+  # by group
+  high_webb_low_product_exposure_groups = scored_groups_matched %>%
+    filter(
+      webb_exposure_score > 50,
+      ai_product_exposure_score < 0
+    ) %>%
+    select(
+      isco_3digit,
+      group_label,
+      ai_product_exposure_score,
+      webb_exposure_score
+    ) %>%
+    arrange(desc(webb_exposure_score)),
+  low_webb_high_product_exposure_groups = scored_groups_matched %>%
+    filter(
+      webb_exposure_score < 0,
+      ai_product_exposure_score > 0
+    ) %>%
+    select(
+      isco_3digit,
+      group_label,
+      ai_product_exposure_score,
+      webb_exposure_score
+    ) %>%
+    arrange(ai_product_exposure_score),
+  # by occupation
+  high_webb_low_product_exposure = scored_occupations_matched %>%
+    filter(
+      webb_exposure_score > 50,
+      ai_product_exposure_score < 0
+    ) %>%
+    select(
+      occupation_title,
+      isco_group,
+      ai_product_exposure_score,
+      webb_exposure_score
+    ) %>%
+    arrange(desc(webb_exposure_score)),
+  low_webb_high_product_exposure = scored_occupations_matched %>%
+    filter(
+      webb_exposure_score < 50,
+      ai_product_exposure_score > 0
+    ) %>%
+    select(
+      occupation_title,
+      isco_group,
+      ai_product_exposure_score,
+      webb_exposure_score
+    ) %>%
+    arrange(ai_product_exposure_score)
+)
 
 # write results -----------------------------------------------------------
 write_csv(
@@ -784,51 +1044,71 @@ ggsave(
   file.path(
     args$output_dir,
     "plots",
-    "ai_product_exposure_score_vs_felten_exposure_score.svg"
+    "ai_product_exposure_score_vs_felten_exposure_score.eps"
   ),
   vs_felten_plot,
   width = 9,
-  height = 5
+  height = 5,
+  device = cairo_ps
 )
 
-# temp --------------------------------------------------------------------
-cor(
-  scored_groups_matched$felten_exposure_score, 
-  scored_groups_matched$webb_exposure_score,
-  use = "complete.obs"
+ggsave(
+  file.path(
+    args$output_dir,
+    "plots",
+    "ai_product_exposure_score_vs_eloundou_exposure_score.eps"
+  ),
+  vs_eloundou_plot,
+  width = 9,
+  height = 5,
+  device = cairo_ps
 )
 
-cor.test(
-  scored_groups_matched$felten_exposure_score, 
-  scored_groups_matched$webb_exposure_score,
-  method = "pearson"
+ggsave(
+  file.path(
+    args$output_dir,
+    "plots",
+    "ai_product_exposure_score_vs_webb_exposure_score.eps"
+  ),
+  vs_webb_plot,
+  width = 9,
+  height = 5,
+  device = cairo_ps
 )
 
-cor(
-  scored_groups_matched$ai_product_exposure_score, 
-  scored_groups_matched$webb_exposure_score,
-  use = "complete.obs"
+
+ggsave(
+  file.path(
+    args$output_dir,
+    "plots",
+    "ai_product_exposure_score_vs_felten_exposure_score_grouped.eps"
+  ),
+  vs_felten_plot_grouped,
+  width = 9,
+  height = 5,
+  device = cairo_ps
 )
 
-cor.test(
-  scored_groups_matched$ai_product_exposure_score, 
-  scored_groups_matched$webb_exposure_score,
-  method = "pearson"
+ggsave(
+  file.path(
+    args$output_dir,
+    "plots",
+    "ai_product_exposure_score_vs_eloundou_exposure_score_grouped.eps"
+  ),
+  vs_eloundou_plot_grouped,
+  width = 9,
+  height = 5,
+  device = cairo_ps
 )
 
-cor(
-  scored_groups_matched$ai_product_exposure_score, 
-  scored_groups_matched$felten_exposure_score,
-  use = "complete.obs"
-)
-
-summary(lm(
-  ai_product_exposure_score ~ felten_exposure_score,
-  data = scored_groups_matched
-))
-
-cor.test(
-  scored_groups_matched$ai_product_exposure_score, 
-  scored_groups_matched$felten_exposure_score,
-  method = "pearson"
+ggsave(
+  file.path(
+    args$output_dir,
+    "plots",
+    "ai_product_exposure_score_vs_webb_exposure_score_grouped.eps"
+  ),
+  vs_webb_plot_grouped,
+  width = 9,
+  height = 5,
+  device = cairo_ps
 )
