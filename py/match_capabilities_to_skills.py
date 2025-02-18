@@ -4,10 +4,36 @@ import argparse
 import numpy as np
 from find_relevant_releases import read_list_from_csv, save_list_to_csv
 from datetime import datetime
+from transformers import AutoTokenizer, AutoModel
+import torch
 
 nlp = spacy.load("en_core_web_lg")
 
-def pull_all_capabilities(releases):
+# Initialize BART model and tokenizer
+model_name = "facebook/bart-large"
+tokenizer = AutoTokenizer.from_pretrained(model_name)
+bart_model = AutoModel.from_pretrained(model_name)
+
+def get_bart_embeddings(text, max_length=512):
+	# Prepare inputs
+	inputs = tokenizer(
+		text,
+		max_length=max_length,
+		padding=True,
+		truncation=True,
+		return_tensors="pt"
+	)
+	
+	# Get model output
+	with torch.no_grad():
+		outputs = bart_model(**inputs)
+	
+	# Use [CLS] token embedding as sentence representation
+	embeddings = outputs.last_hidden_state[:, 0, :]
+	return embeddings
+
+
+def pull_all_capabilities(scored_releases):
   all_capabilities = []
   for release in scored_releases:
     capability = release.get('capability_string', '')
@@ -15,56 +41,6 @@ def pull_all_capabilities(releases):
       all_capabilities.extend(capability.split("; "))
   return all_capabilities
 
-def calculate_similarity_score_for_skills(
-  all_capabilities, esco_skills, nlp=nlp, threshold=0.7
-):
-  scored_skills = []
-  i = 0
-  for skill in esco_skills:
-    i += 1
-    print(f"Processing skill {i} of {len(esco_skills)}, {skill.get('preferredLabel', '')}")
-    similarity_scores = []
-    for capability in all_capabilities:
-      capability_doc = nlp(capability)
-      skill_doc = nlp(skill.get('preferredLabel', '') + " " + skill.get('description', '') + " " + skill.get('altLabels', ''))
-      similarity = capability_doc.similarity(skill_doc)
-      similarity_scores.append(similarity)
-    print(f"Similarity score: {max(similarity_scores)}")
-    scored_skills.append({
-      'concept_uri': skill.get('conceptUri', ''),
-      'skill': skill.get('preferredLabel', ''),
-      'description': skill.get('description', ''),
-      'alt_labels': skill.get('altLabels', ''),
-      'max_similarity': max(similarity_scores),
-      'max_similarity_index': similarity_scores.index(max(similarity_scores)),
-      'n_similar': len([s for s in similarity_scores if s > threshold]),
-      'mean_similarity': sum(similarity_scores) / len(similarity_scores)
-    })
-  return scored_skills
-
-def calculate_similarity_score_for_capabilities(
-  all_capabilities, esco_skills, nlp=nlp, threshold=0.7
-):
-  scored_capabilities = []
-  i = 0
-  for capability in all_capabilities:
-    i += 1
-    print(f"Processing capability {i} of {len(all_capabilities)}, {capability}")
-    capability_doc = nlp(capability)
-    similarity_scores = []
-    for skill in esco_skills:
-      skill_doc = nlp(skill.get('preferredLabel', '') + " " + skill.get('description', '') + " " + skill.get('altLabels', ''))
-      similarity = capability_doc.similarity(skill_doc)
-      print(f"{skill.get('preferredLabel', '')} vs {capability}")
-      print(f"Similarity: {similarity}")
-      similarity_scores.append(similarity)
-    scored_capabilities.append({
-      'capability': capability,
-      'similarity': max(similarity_scores),
-      'n_similar': len([s for s in similarity_scores if s > threshold]),
-      'mean_similarity': sum(similarity_scores) / len(similarity_scores)
-    })
-  return scored_capabilities
 
 def find_mean_text_vector(text, nlp):
   return(nlp(text).vector)
@@ -75,6 +51,7 @@ def cosine_similarity(v1, v2):
   norm_v1 = sum([a**2 for a in v1])**0.5
   norm_v2 = sum([b**2 for b in v2])**0.5
   return dot_product / (norm_v1 * norm_v2)
+
 
 def cosine_similarity_np(v1, v2):
   # Ensure input arrays are numpy arrays
@@ -104,6 +81,7 @@ def cosine_similarity_np(v1, v2):
   
   return cosine_similarities
 
+
 def calculate_all_similarity_scores(
   all_capabilities, esco_skills, nlp=nlp, threshold=0.7
 ):
@@ -113,7 +91,7 @@ def calculate_all_similarity_scores(
   for capability in all_capabilities:
     i += 1
     print(f"Gettin mean vector {i} of {len(all_capabilities)}")
-    capability_vector = find_mean_text_vector(capability, nlp)
+    capability_vector = get_bart_embeddings(capability)
     capability_list.append({
       'capability': capability,
       'vector': capability_vector
@@ -123,9 +101,8 @@ def calculate_all_similarity_scores(
   for skill in esco_skills:
     i += 1
     print(f"Gettin mean vector {i} of {len(esco_skills)}")
-    skill_vector = find_mean_text_vector(
-      skill.get('preferredLabel', '') + " " + skill.get('description', '') + " " + skill.get('altLabels', ''), nlp
-    )
+    skill_string = skill.get('preferredLabel', '') + " " + skill.get('description', '') + " " + skill.get('altLabels', '')
+    skill_vector = get_bart_embeddings(skill_string)
     skill['vector'] = skill_vector
 
   # calculate pairwise similarity scores
@@ -135,25 +112,45 @@ def calculate_all_similarity_scores(
     for skill in esco_skills:
       i+=1
       print(f"Processing {i} of {len(all_capabilities) * len(esco_skills)}")
+      similarity = torch.nn.functional.cosine_similarity(
+        capability['vector'], skill['vector']
+      ).item()
+
       similarity_scores.append({
         'esco_skill_label': skill.get('preferredLabel', ''),
         'esco_skill_uri': skill.get('conceptUri', ''),
         'ai_capability': capability.get('capability', ''),
-        'cosine_similarity': cosine_similarity(capability['vector'], skill['vector'])
+        'cosine_similarity': similarity
       })
 
   return similarity_scores
 
 
+def log_sum_exp(scores, gamma=1.0):
+  """
+  Compute the log-sum-exp of a list or array of scores with scaling parameter gamma.
+  """
+  if gamma == 0:
+    raise ValueError("gamma must be non-zero.")
+
+  scores = np.array(scores)
+  # Multiply scores by gamma
+  scaled_scores = gamma * scores
+  # For numerical stability, subtract the maximum scaled score
+  max_score = np.max(scaled_scores)
+  lse = max_score + np.log(np.sum(np.exp(scaled_scores - max_score)))
+  return lse / gamma
+
+
 def calculate_all_similarity_scores_batched(
-  all_capabilities, esco_skills, nlp=nlp, threshold=0.7,
+  all_capabilities, esco_skills, threshold=0.7,
   checkpoint_file="data/scored_esco_skills_checkpoint.csv",
   capability_vectors = None
 ):
   # Calculate mean vectors for capabilities
   if capability_vectors is None:
-    capability_vectors = np.array([find_mean_text_vector(capability, nlp) for capability in all_capabilities])
-
+    capability_vectors = np.array([get_bart_embeddings(capability) for capability in all_capabilities])
+  
   # Initialize the list for storing similarity scores
   similarity_scores = []
 
@@ -161,9 +158,8 @@ def calculate_all_similarity_scores_batched(
   for i, skill in enumerate(esco_skills):
     print(f"Processing skill {i+1} of {len(esco_skills)}")
     # Calculate the mean vector for the current skill
-    skill_vector = find_mean_text_vector(
-      skill.get('preferredLabel', '') + " " + skill.get('description', '') + " " + skill.get('altLabels', ''), nlp
-    )
+    skill_string = skill.get('preferredLabel', '') + " " + skill.get('description', '') + " " + skill.get('altLabels', '')
+    skill_vector = get_bart_embeddings(skill_string)
 
     # Calculate cosine similarity between the skill vector and all capability vectors
     # Here, skill_vector needs to be repeated to match the number of capabilities for batch processing
@@ -179,6 +175,10 @@ def calculate_all_similarity_scores_batched(
       'esco_skill_label': skill.get('preferredLabel', ''),
       'esco_skill_uri': skill.get('conceptUri', ''),
       'max_similarity': np.nanmax(cosine_similarities), 
+      'logsumexp_similarity_1': log_sum_exp(cosine_similarities, gamma=1),
+      'logsumexp_similarity_2': log_sum_exp(cosine_similarities, gamma=2),
+      'logsumexp_similarity_5': log_sum_exp(cosine_similarities, gamma=5),
+      'logsumexp_similarity_10': log_sum_exp(cosine_similarities, gamma=10),
       'n_similar': np.sum(cosine_similarities > threshold),
       'mean_similarity': np.nanmean(cosine_similarities),
       'max_similarity_capability': all_capabilities[np.nanargmax(cosine_similarities)]
@@ -268,7 +268,7 @@ if __name__ == "__main__":
 
     # calculate pairwise similarity
     scored_skills = calculate_all_similarity_scores_batched(
-      all_capabilities, esco_skills, threshold=0.9, nlp=nlp,
+      all_capabilities, esco_skills, threshold=0.9,
       checkpoint_file=args.checkpoint_file, capability_vectors=capability_vectors
     )
 
