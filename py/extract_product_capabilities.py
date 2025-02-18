@@ -70,32 +70,42 @@ def score_press_release_similarity(
   }, 
   dedup_headers = True
 ):
-  if threshold_release is not None:
-    scored_releases = [
-      release for release in scored_releases if 
-      (float(release['adoption_similarity_max']) > threshold_release['adoption']['max'] +
+  accepted_releases = []
+  rejected_releases = []
+  
+  for release in scored_releases:
+    adoption_criteria = (
+      float(release['adoption_similarity_max']) > threshold_release['adoption']['max'] +
       float(release['adoption_similarity_avg']) > threshold_release['adoption']['avg'] +
       float(release['adoption_similarity_top_3_avg']) > threshold_release['adoption']['top_3_avg'] +
       float(release['adoption_similarity_threshold_count']) > threshold_release['adoption']['threshold_count'] +
-      float(release['adoption_similarity_logsumexp']) > threshold_release['adoption']['logsumexp'] >= 2) or
-      (float(release['launch_similarity_max']) > threshold_release['launch']['max'] +
+      float(release['adoption_similarity_logsumexp']) > threshold_release['adoption']['logsumexp'] >= 2
+    )
+    
+    launch_criteria = (
+      float(release['launch_similarity_max']) > threshold_release['launch']['max'] +
       float(release['launch_similarity_avg']) > threshold_release['launch']['avg'] +
       float(release['launch_similarity_top_3_avg']) > threshold_release['launch']['top_3_avg'] +
       float(release['launch_similarity_threshold_count']) > threshold_release['launch']['threshold_count'] +
-      float(release['launch_similarity_logsumexp']) > threshold_release['launch']['logsumexp'] >= 2)
-    ] # at least two metrics must be above threshold
-  
+      float(release['launch_similarity_logsumexp']) > threshold_release['launch']['logsumexp'] >= 2
+    )
+    
+    if adoption_criteria or launch_criteria:
+      accepted_releases.append(release)
+    else:
+      rejected_releases.append(release)
+
   if dedup_headers:
     # remove releases with duplicate header
     seen_headers = set()
     unique_releases = []
-    for release in scored_releases:
+    for release in accepted_releases:
       if release['header'] not in seen_headers:
         unique_releases.append(release)
         seen_headers.add(release['header'])
-    scored_releases = unique_releases
+    accepted_releases = unique_releases
 
-  return scored_releases
+  return accepted_releases, rejected_releases
 
 
 def extract_capability_string(
@@ -178,8 +188,9 @@ if __name__ == "__main__":
 
   if not args.no_filtering:
     print("Reading press releases")
-    processed_releases = score_press_release_similarity(
-      read_list_from_csv(args.input_file),
+    all_releases = read_list_from_csv(args.input_file)
+    processed_releases, rejected_releases = score_press_release_similarity(
+      all_releases,
       threshold_release = {
         "adoption" : {
           "max" : 0.7,
@@ -198,7 +209,22 @@ if __name__ == "__main__":
       }, 
       dedup_headers=True
     )
+    
+    # Save main filtered file
     save_list_to_csv(processed_releases, file_name)
+    
+    # Save samples
+    sample_size = min(100, len(processed_releases))
+    accepted_sample = random.sample(processed_releases, sample_size)
+    save_list_to_csv(accepted_sample, file_name.replace('.csv', '_accepted_sample.csv'))
+    
+    sample_size = min(100, len(rejected_releases))
+    rejected_sample = random.sample(rejected_releases, sample_size)
+    save_list_to_csv(rejected_sample, file_name.replace('.csv', '_rejected_sample.csv'))
+    
+    print(f"Saved {len(processed_releases)} filtered releases")
+    print(f"Saved {sample_size} sample accepted releases")
+    print(f"Saved {sample_size} sample rejected releases")
   else:
     processed_releases = read_list_from_csv(file_name)
   
