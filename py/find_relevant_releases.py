@@ -3,15 +3,19 @@ import json
 import re
 import spacy
 import csv
-import numpy as np
 import argparse
+import torch
+import numpy as np
+from transformers import AutoTokenizer, AutoModel
+from torch.nn.functional import cosine_similarity
 from datetime import datetime, timedelta
 
 articles_path = "data/articles"
 
 nlp = spacy.load("en_core_web_lg")
-
-search_query = nlp("AI product launch adoption new technology")
+model_name = "facebook/bart-large"  # or "facebook/bart-base" for smaller model
+tokenizer = AutoTokenizer.from_pretrained(model_name)
+model = AutoModel.from_pretrained(model_name)
 
 keywords = [
   "artificial intelligence", "AI", 
@@ -92,13 +96,16 @@ def count_keyphrases(content, keyphrases):
   return sum(found_keyphrases.values())
 
 
-def calculate_semantic_similarity(text, search_queries, nlp=nlp):
-  """Calculate weighted semantic similarity scores."""
+def calculate_spacy_similarity(text, search_queries):
+  """Original spaCy-based similarity calculation."""
   doc = nlp(text)
-  # Get all similarities
   similarities = [doc.similarity(nlp(sq)) for sq in search_queries]
   
-  # Return multiple metrics instead of just max
+  return similarities
+
+
+def summarize_similarity(similarities):
+  """Summarize similarity scores."""
   return {
     'max_similarity': max(similarities),
     'avg_similarity': sum(similarities) / len(similarities),
@@ -107,15 +114,52 @@ def calculate_semantic_similarity(text, search_queries, nlp=nlp):
   }
 
 
-def is_relevant_press_release(text, search_query):
-    # Process the text with spaCy to lemmatize
-    doc = nlp(text)
-    # Lemmatize the text of the press release
-    text_lemmatized = " ".join([token.lemma_ for token in doc])
-    # Check for semantic similarity
-    doc_search_query = nlp(search_query)
-    doc_text_lemmatized = nlp(text_lemmatized)
-    return doc_text_lemmatized.similarity(doc_search_query) > 0.5
+def get_bart_embeddings(text, max_length=512):
+  """Get embeddings from BART model."""
+  # Prepare inputs
+  inputs = tokenizer(
+    text,
+    max_length=max_length,
+    padding=True,
+    truncation=True,
+    return_tensors="pt"
+  )
+  
+  # Get model output
+  with torch.no_grad():
+    outputs = model(**inputs)
+  
+  # Use [CLS] token embedding (first token) as sentence representation
+  # Shape: (batch_size, hidden_size)
+  embeddings = outputs.last_hidden_state[:, 0, :]
+  return embeddings
+
+
+def calculate_semantic_similarity(text, search_queries, nlp=nlp, use_spacy=False):
+  """Calculate weighted semantic similarity scores using BART."""
+  if use_spacy:
+    similarities = calculate_spacy_similarity(text, search_queries)
+  else:
+    # Get text embedding
+    text_embedding = get_bart_embeddings(text)
+    
+    # Get embeddings for all search queries
+    query_embeddings = torch.cat([
+        get_bart_embeddings(query) for query in search_queries
+    ])
+  
+    # Calculate cosine similarities
+    # Expand text embedding to match query embeddings shape
+    text_embedding_expanded = text_embedding.expand(len(search_queries), -1)
+    similarities = cosine_similarity(
+      text_embedding_expanded, 
+      query_embeddings
+    ).squeeze().tolist()
+  
+  if isinstance(similarities, float):
+    similarities = [similarities]
+
+  return summarize_similarity(similarities)
 
 
 def replace_quotes(text, field_names):
@@ -246,6 +290,11 @@ if __name__ == "__main__":
     "--file-name", type=str, help="name of file to save results",
     default="results/relevant_press_releases.csv"
   )
+  parser.add_argument(
+    "--use-spacy", action="store_true",
+    help="use spaCy for similarity calculation",
+    default=False
+  )
 
   args = parser.parse_args()
 
@@ -275,12 +324,14 @@ if __name__ == "__main__":
     relevant_press_releases = score_press_release_similarity(
       relevant_press_releases, 
       launch_phrases, "launch_similarity",
-      overwirte=False
+      overwirte=False,
+      use_spacy=args.use_spacy
     )
     relevant_press_releases = score_press_release_similarity(
       relevant_press_releases, 
       adoption_phrases, "adoption_similarity",
-      overwirte=False
+      overwirte=False,
+      use_spacy=args.use_spacy
     )
     save_list_to_csv(relevant_press_releases, file_name)
   
