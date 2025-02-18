@@ -120,15 +120,39 @@ def find_similar_sentences(
 
 def find_relevant_sentences_for_all_releases(
   scored_releases, 
-  threshold_release = 0.7, threshold_sentence = 0.8,
+  threshold_release = {
+    "adoption" : {
+      "max" : 0.7,
+      "avg" : 0.5,
+      "top_3_avg" : 0.65,
+      "threshold_count" : 0.5,
+      "logsumexp" : 0.5
+    },
+    "launch" : {
+      "max" : 0.7,
+      "avg" : 0.5,
+      "top_3_avg" : 0.65,
+      "threshold_count" : 0.5,
+      "logsumexp" : 0.5
+    }
+  }, 
+  threshold_sentence = 0.8,
   dedup_headers = True
 ):
   if threshold_release is not None:
     scored_releases = [
       release for release in scored_releases if 
-      float(release['adoption_similarity']) > threshold_release or
-      float(release['launch_similarity']) > threshold_release
-    ]
+      (float(release['adoption_similarity_max']) > threshold_release['adoption']['max'] +
+      float(release['adoption_similarity_avg']) > threshold_release['adoption']['avg'] +
+      float(release['adoption_similarity_top_3_avg']) > threshold_release['adoption']['top_3_avg'] +
+      float(release['adoption_similarity_threshold_count']) > threshold_release['adoption']['threshold_count'] +
+      float(release['adoption_similarity_logsumexp']) > threshold_release['adoption']['logsumexp'] >= 2) or
+      (float(release['launch_similarity_max']) > threshold_release['launch']['max'] +
+      float(release['launch_similarity_avg']) > threshold_release['launch']['avg'] +
+      float(release['launch_similarity_top_3_avg']) > threshold_release['launch']['top_3_avg'] +
+      float(release['launch_similarity_threshold_count']) > threshold_release['launch']['threshold_count'] +
+      float(release['launch_similarity_logsumexp']) > threshold_release['launch']['logsumexp'] >= 2)
+    ] # at least two metrics must be above threshold
   
   if dedup_headers:
     # remove releases with duplicate header

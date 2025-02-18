@@ -3,6 +3,7 @@ import json
 import re
 import spacy
 import csv
+import numpy as np
 import argparse
 from datetime import datetime, timedelta
 
@@ -14,10 +15,6 @@ search_query = nlp("AI product launch adoption new technology")
 
 keywords = [
   "artificial intelligence", "AI", 
-  # "launch", "adopt", "introduce", "release"
-  # "new product", "new technology", "new solution", "new feature", 
-  # "innovation", "cutting-edge", "state-of-the-art",
-  # "revolutionize", "disrupt", "breakthrough", "innovative",
   "ChatGPT", "GPT", "GPT-3", "OpenAI", "Open AI", 
   "Claude", "Anthropic", "Llama", "Bard", "Gemini", "Deepmind",
   "LLM", "Turing", "DALL-E", "Codex", "Copilot", "Co-pilot",
@@ -26,36 +23,47 @@ keywords = [
   "Reinforcement Learning", "Supervised Learning", "Unsupervised Learning",
 ]
 
-
-launch_phrases = [
-  "Introducing our new AI-powered solution",
-  "Launch of our latest AI innovation",
-  "AI-driven technology debuts",
-  "Unveiling our AI-based platform",
-  "Our new product, powered by artificial intelligence",
-  "AI-enhanced solution now available",
-  "Introducing AI to our industry or domain",
-  "Next-generation AI tool launch",
-  "Expanding our portfolio with AI technology",
-  "Revolutionizing our industry or domain with AI",
-  "AI-powered product launch",
-  "AI-driven innovation"
+company_actions = [
+  "announce", "launch", "introduce", "unveil", "release", "debut",
+  "implement", "deploy", "adopt", "integrate", "incorporate"
 ]
 
-
-adoption_phrases = [
-  "Adopting AI for for our process or task",
-  "Implementing AI-driven processes",
-  "Transforming our business with AI",
-  "Embracing AI to enhance our business performance",
-  "Integrating artificial intelligence in our workflows",
-  "Leveraging AI for better business outcomes",
-  "Our journey to AI adoption",
-  "Pioneering AI innovation in our industry or domain",
-  "AI as a catalyst for change, improvement, innovation in our company",
-  "Enhancing our products and services with AI capabilities",
-  "AI-powered transformation of our business"
+ai_terms = [
+  "AI", "artificial intelligence", "machine learning", "deep learning",
+  "neural network", "LLM", "large language model"
 ]
+
+product_terms = [
+  "solution", "platform", "system", "technology", "product", "service",
+  "tool", "application", "capability", "feature"
+]
+
+business_impacts = [
+  "transform", "enhance", "improve", "optimize", "streamline",
+  "revolutionize", "accelerate", "modernize"
+]
+
+# Generate phrases programmatically
+def generate_launch_phrases():
+  phrases = []
+  for action in company_actions[:6]:  # Use first 6 actions for launches
+    for ai in ai_terms:
+      for product in product_terms:
+        phrases.append(f"{action} new {ai}-powered {product}")
+        phrases.append(f"{action} {ai}-based {product}")
+  return phrases
+
+def generate_adoption_phrases():
+  phrases = []
+  for action in company_actions[6:]:  # Use last 5 actions for adoption
+    for ai in ai_terms:
+      for impact in business_impacts:
+        phrases.append(f"{action} {ai} to {impact} operations")
+        phrases.append(f"{action} {ai} for business transformation")
+  return phrases
+
+launch_phrases = generate_launch_phrases()
+adoption_phrases = generate_adoption_phrases()
 
 
 def lemmatize_text(text):
@@ -84,11 +92,19 @@ def count_keyphrases(content, keyphrases):
   return sum(found_keyphrases.values())
 
 
-def calculate_semantic_similarity(text, search_queries, nlp = nlp):
-  """Calculate the semantic similarity between the text and the search queries."""
+def calculate_semantic_similarity(text, search_queries, nlp=nlp):
+  """Calculate weighted semantic similarity scores."""
   doc = nlp(text)
+  # Get all similarities
   similarities = [doc.similarity(nlp(sq)) for sq in search_queries]
-  return max(similarities)
+  
+  # Return multiple metrics instead of just max
+  return {
+    'max_similarity': max(similarities),
+    'avg_similarity': sum(similarities) / len(similarities),
+    'top_3_avg': sum(sorted(similarities, reverse=True)[:3]) / 3,
+    'above_threshold_count': sum(1 for s in similarities if s > 0.5)
+  }
 
 
 def is_relevant_press_release(text, search_query):
@@ -171,23 +187,47 @@ def find_press_releases_with_keyphrases(directory, keyphrases, existing_press_re
   return relevant_press_releases
 
 
-def score_press_release_similarity(press_releases, phrases, field_name, overwirte=False):
-  """Score the press releases based on semantic similarity with the given phrases."""
+def log_sum_exp(scores, gamma=1.0):
+  """
+  Compute the log-sum-exp of a list or array of scores with scaling parameter gamma.
+  """
+  if gamma == 0:
+    raise ValueError("gamma must be non-zero.")
+
+  scores = np.array(scores)
+  # Multiply scores by gamma
+  scaled_scores = gamma * scores
+  # For numerical stability, subtract the maximum scaled score
+  max_score = np.max(scaled_scores)
+  lse = max_score + np.log(np.sum(np.exp(scaled_scores - max_score)))
+  return lse / gamma
+
+
+def score_press_release_similarity(press_releases, phrases, field_prefix, overwrite=False):
+  """Score press releases with multiple similarity metrics."""
   current_index = 0
   for item in press_releases:
-    if field_name in item and not overwirte:
-      continue # don't overwrite existing scores
+    # Check if any of the metrics already exist
+    if all(f"{field_prefix}_{metric}" in item for metric in 
+      ['max', 'avg', 'top_3_avg', 'threshold_count']) and not overwrite:
+      continue
 
-    similarity = calculate_semantic_similarity(
+    similarities = calculate_semantic_similarity(
       item['header'], phrases
     )
-
-    item[field_name] = similarity
-    
+    # Store all metrics
+    item[f"{field_prefix}_max"] = similarities['max_similarity']
+    item[f"{field_prefix}_avg"] = similarities['avg_similarity']
+    item[f"{field_prefix}_top_3_avg"] = similarities['top_3_avg']
+    item[f"{field_prefix}_threshold_count"] = similarities['above_threshold_count']
+    item[f"{field_prefix}_logsumexp"] = log_sum_exp(list(similarities.values()))
+        
     current_index += 1
     if current_index % 100 == 0:
       print(f"Processed {current_index} press releases")
+    
   return press_releases
+
 
 if __name__ == "__main__":
   print("Starting")
