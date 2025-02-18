@@ -12,57 +12,6 @@ load_dotenv()
 
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
-capability_phrases = [
-  "Our AI-powered solution is capable of",
-  "We have developed a new algorithm that",
-  "Our product can",
-  "We have created a new model that",
-  "Our product does",
-  "We have developed a new system that",
-  "Our product will",
-  "We have created a new tool that",
-  "Our product is able to",
-  "We have developed a new software that",
-  "Our product has the capability to",
-  "We have created a new application that"
-]
-
-nlp = spacy.load("en_core_web_lg")
-
-def extract_verb_noun_pairs(text, nlp=nlp):
-  verb_noun_pairs = []
-  doc = nlp(text)  
-  # Iterate through the sentences in the document
-  for sent in doc.sents:
-    # Find verb tokens
-    verbs = [token for token in sent if token.pos_ == "VERB"]
-    for verb in verbs:
-      # For each verb, find directly connected nouns
-      for child in verb.children:
-        if child.dep_ in ["dobj", "pobj"]:  # PROPN for proper nouns
-          verb_noun_pairs.append((verb.lemma_, child.lemma_))
-
-  return verb_noun_pairs
-
-
-def extract_verb_subject_noun_pairs(text, nlp=nlp):
-  verb_subject_noun_pairs = []
-  doc = nlp(text)
-  for sent in doc.sents:
-    # Find verb tokens
-    verbs = [token for token in sent if token.pos_ == "VERB"]
-    for verb in verbs:
-      subjects = [child for child in verb.children if child.dep_ == "nsubj"]
-      objects = [child for child in verb.children if child.dep_ in ["dobj", "pobj"]]
-      
-      # If both subjects and objects are found, add them to the list
-      for subject in subjects:
-        for obj in objects:
-          verb_subject_noun_pairs.append((subject.lemma_, verb.lemma_, obj.lemma_))
-
-  return verb_subject_noun_pairs
-
-
 def read_random_article(articles_path = "data/articles", scored_relaese_path = "data/relevant_releases.csv"):
   # Selects a random file from articles_path and reads it. Used for testing extract_verb_noun_pairs
   if scored_relaese_path is None:
@@ -101,24 +50,7 @@ def read_specific_article(article_path):
     return content
 
 
-def find_similar_sentences(
-    text, nlp=nlp, keyphrases=capability_phrases,
-    threshold=0.8, verbose=True
-):
-  doc = nlp(text)
-  similar_sentences = []
-  for sent in doc.sents:
-    similarity_score = calculate_semantic_similarity(
-      sent.text, keyphrases, nlp=nlp
-    )
-    if verbose:
-      print(f"{similarity_score:.2f}: {sent.text}")
-    if similarity_score >= threshold:
-      similar_sentences.append(sent.text)
-  return similar_sentences
-
-
-def find_relevant_sentences_for_all_releases(
+def score_press_release_similarity(
   scored_releases, 
   threshold_release = {
     "adoption" : {
@@ -136,7 +68,6 @@ def find_relevant_sentences_for_all_releases(
       "logsumexp" : 0.5
     }
   }, 
-  threshold_sentence = 0.8,
   dedup_headers = True
 ):
   if threshold_release is not None:
@@ -163,25 +94,6 @@ def find_relevant_sentences_for_all_releases(
         unique_releases.append(release)
         seen_headers.add(release['header'])
     scored_releases = unique_releases
-
-  i = 0
-  for release in scored_releases:
-    i += 1
-    print(f"processing release {i} of {len(scored_releases)}")
-    with open(release['file_path'], 'r', encoding='utf-8') as f:
-      file_content = f.read()
-      file_content = replace_quotes(
-        file_content, 
-        ['header', 'uploader', 'uploader_link', 'date', 'body']
-      ) # fix some wrongly saved json files
-      data = json.loads(file_content)
-      content = data.get('header', '') + " " + data.get('body', '')
-      #print(content)
-      release.update({
-        'relevant_sentences': find_similar_sentences(
-          content, threshold=threshold_sentence, verbose=False
-        )
-      })
 
   return scored_releases
 
@@ -214,8 +126,7 @@ def extract_capability_strings_for_all_releases(
     if 'capability_string' in release and release['capability_string'] != '':
       print("capability string already exists")
       continue
-    content = release.get('relevant_sentences', '')
-    content = " ".join(content)
+    content = release.get('header', '') + " " + release.get('body', '')
     if content != '':
       release.update({
         'capability_string': extract_capability_string(
@@ -238,7 +149,7 @@ if __name__ == "__main__":
     description="Extract verb-noun pairs from AI-related press releases"
   )
   parser.add_argument(
-    "--no-shortening", action="store_true", help="skip selecting relevant sentences"
+    "--no-filtering", action="store_true", help="skip filtering press releases"
   )
   parser.add_argument(
     "--no-llm", action="store_true", help="skip capability extraction via LLM"
@@ -265,12 +176,27 @@ if __name__ == "__main__":
   file_name = args.file_name if args.file_name else "results/processed_press_releases.csv"
   checkpoint_file = args.llm_checkpoint if args.llm_checkpoint else "checkpoints/llm_checkpoint.csv"
 
-  if not args.no_shortening:
+  if not args.no_filtering:
     print("Reading press releases")
-    processed_releases = find_relevant_sentences_for_all_releases(
+    processed_releases = score_press_release_similarity(
       read_list_from_csv(args.input_file),
-      threshold_release=0.7, 
-      threshold_sentence=0.8
+      threshold_release = {
+        "adoption" : {
+          "max" : 0.7,
+          "avg" : 0.5,
+          "top_3_avg" : 0.65,
+          "threshold_count" : 0.5,
+          "logsumexp" : 0.5
+        },
+        "launch" : {
+          "max" : 0.7,
+          "avg" : 0.5,
+          "top_3_avg" : 0.65,
+          "threshold_count" : 0.5,
+          "logsumexp" : 0.5
+        }
+      }, 
+      dedup_headers=True
     )
     save_list_to_csv(processed_releases, file_name)
   else:
