@@ -21,6 +21,7 @@ keywords = [
   "artificial intelligence", "AI", 
   "ChatGPT", "GPT", "GPT-3", "OpenAI", "Open AI", 
   "Claude", "Anthropic", "Llama", "Bard", "Gemini", "Deepmind",
+  "Grok", "Groq",
   "LLM", "Turing", "DALL-E", "Codex", "Copilot", "Co-pilot",
   "Large Language Model",   "Deep Learning", "Neural Network", "Machine Learning", "Natural Language Processing",
   "Computer Vision", "Speech Recognition", "Generative Model", "Transformer",
@@ -28,40 +29,39 @@ keywords = [
 ]
 
 company_actions = [
-  "announce", "launch", "introduce", "unveil", "release", "debut",
-  "implement", "deploy", "adopt", "integrate", "incorporate"
+  "announce", "launch", "introduce", "release", 
+  "implement", "deploy", "adopt", "integrate"
 ]
 
 ai_terms = [
-  "AI", "artificial intelligence", "machine learning", "deep learning",
-  "neural network", "LLM", "large language model"
+  "AI", "artificial intelligence", "machine learning", 
+  "LLM", "large language model"
 ]
 
 product_terms = [
-  "solution", "platform", "system", "technology", "product", "service",
-  "tool", "application", "capability", "feature"
+  "solution", "platform", "system", "technology", 
+  "product", "service", "application"
 ]
 
 business_impacts = [
-  "transform", "enhance", "improve", "optimize", "streamline",
-  "revolutionize", "accelerate", "modernize"
+  "transform", "enhance", "improve", "optimize", "accelerate"
 ]
 
 # Generate phrases programmatically
 def generate_launch_phrases():
   phrases = []
-  for action in company_actions[:6]:  # Use first 6 actions for launches
+  for action in company_actions[:4]:  # Use first 4 actions for launches
     for ai in ai_terms:
-      for product in product_terms:
+      for product in product_terms:  # Use first 4 product terms
         phrases.append(f"{action} new {ai}-powered {product}")
         phrases.append(f"{action} {ai}-based {product}")
   return phrases
 
 def generate_adoption_phrases():
   phrases = []
-  for action in company_actions[6:]:  # Use last 5 actions for adoption
-    for ai in ai_terms:
-      for impact in business_impacts:
+  for action in company_actions[4:]:  # Use last 4 actions for adoption
+    for ai in ai_terms:  # Use first 3 AI terms
+      for impact in business_impacts:  # Use first 4 impact terms
         phrases.append(f"{action} {ai} to {impact} operations")
         phrases.append(f"{action} {ai} for business transformation")
   return phrases
@@ -96,7 +96,7 @@ def count_keyphrases(content, keyphrases):
   return sum(found_keyphrases.values())
 
 
-def calculate_spacy_similarity(text, search_queries):
+def calculate_spacy_similarity(text, search_queries, nlp=nlp):
   """Original spaCy-based similarity calculation."""
   doc = nlp(text)
   similarities = [doc.similarity(nlp(sq)) for sq in search_queries]
@@ -114,11 +114,44 @@ def summarize_similarity(similarities):
   }
 
 
-def get_bart_embeddings(text, max_length=512):
-  """Get embeddings from BART model."""
+def cosine_similarity_np(v1, v2):
+  # Ensure input arrays are numpy arrays
+  if not isinstance(v1, np.ndarray):
+    vectors1 = np.array(v1)
+  else:
+    vectors1 = v1
+
+  if not isinstance(v2, np.ndarray):
+    vectors2 = np.array(v2)
+  else:
+    vectors2 = v2
+
+  # Calculate dot products. For 2D arrays, np.dot does matrix multiplication,
+  # so we use np.einsum to compute dot products along the last axis.
+  dot_products = np.einsum('ij,ij->i', vectors1, vectors2)
+  
+  # Calculate norms of each vector
+  norms_v1 = np.linalg.norm(vectors1, axis=1)
+  norms_v2 = np.linalg.norm(vectors2, axis=1)
+  norms_product = norms_v1 * norms_v2
+  
+  # avoid division by zero
+  valid_indices = norms_product != 0
+  cosine_similarities = np.zeros_like(dot_products, dtype=float)
+  cosine_similarities[valid_indices] = dot_products[valid_indices] / norms_product[valid_indices]
+  
+  return cosine_similarities
+
+
+def get_bart_embeddings(texts, max_length=512):
+  """Get embeddings from BART model for a single text or list of texts."""
+  # Handle both single text and list of texts
+  is_single_text = isinstance(texts, str)
+  texts_list = [texts] if is_single_text else texts
+  
   # Prepare inputs
   inputs = tokenizer(
-    text,
+    texts_list,
     max_length=max_length,
     padding=True,
     truncation=True,
@@ -132,25 +165,36 @@ def get_bart_embeddings(text, max_length=512):
   # Use [CLS] token embedding (first token) as sentence representation
   # Shape: (batch_size, hidden_size)
   embeddings = outputs.last_hidden_state[:, 0, :]
-  return embeddings
+  
+  # Return single embedding if input was single text
+  return embeddings[0] if is_single_text else embeddings
 
 
-def calculate_semantic_similarity(text, search_queries, nlp=nlp, use_spacy=False):
+def calculate_semantic_similarity(
+    text, 
+    search_queries, 
+    text_embedding = None,
+    search_queries_embeddings = None, 
+    nlp=nlp, 
+    use_spacy=False
+  ):
   """Calculate weighted semantic similarity scores using BART."""
   if use_spacy:
-    similarities = calculate_spacy_similarity(text, search_queries)
+    similarities = calculate_spacy_similarity(text, search_queries, nlp=nlp)
   else:
     # Get text embedding
-    text_embedding = get_bart_embeddings(text)
+    if text_embedding is None:
+      text_embedding = get_bart_embeddings(text)
     
-    # Get embeddings for all search queries
-    query_embeddings = torch.cat([
-        get_bart_embeddings(query) for query in search_queries
-    ])
+    # Get embeddings for all search queries at once
+    if search_queries_embeddings is None:
+      query_embeddings = get_bart_embeddings(search_queries)
+    else:
+      query_embeddings = search_queries_embeddings
   
     # Calculate cosine similarities
     # Expand text embedding to match query embeddings shape
-    text_embedding_expanded = text_embedding.expand(len(search_queries), -1)
+    text_embedding_expanded = text_embedding.expand(len(query_embeddings), -1)
     similarities = cosine_similarity(
       text_embedding_expanded, 
       query_embeddings
@@ -223,6 +267,7 @@ def find_press_releases_with_keyphrases(directory, keyphrases, existing_press_re
             if count_keyphrases(content, keyphrases) > 0:
               relevant_press_releases.append({
                 'header': data.get('header'),
+                'body': data.get('body'),
                 'date': data.get('date'),
                 'file_path': file_path
               })
@@ -247,9 +292,17 @@ def log_sum_exp(scores, gamma=1.0):
   return lse / gamma
 
 
-def score_press_release_similarity(press_releases, phrases, field_prefix, overwrite=False):
+def score_press_release_similarity(
+    press_releases, 
+    phrases, 
+    field_prefix, 
+    overwrite=False,
+    use_spacy=False
+  ):
   """Score press releases with multiple similarity metrics."""
   current_index = 0
+  phrase_embeddings = get_bart_embeddings(phrases) # embed once
+  
   for item in press_releases:
     # Check if any of the metrics already exist
     if all(f"{field_prefix}_{metric}" in item for metric in 
@@ -257,7 +310,11 @@ def score_press_release_similarity(press_releases, phrases, field_prefix, overwr
       continue
 
     similarities = calculate_semantic_similarity(
-      item['header'], phrases
+      text=item['header'] + " " + item['body'], 
+      search_queries=phrases, 
+      text_embedding=None,
+      search_queries_embeddings=phrase_embeddings, 
+      use_spacy=use_spacy
     )
     # Store all metrics
     item[f"{field_prefix}_max"] = similarities['max_similarity']
@@ -265,11 +322,88 @@ def score_press_release_similarity(press_releases, phrases, field_prefix, overwr
     item[f"{field_prefix}_top_3_avg"] = similarities['top_3_avg']
     item[f"{field_prefix}_threshold_count"] = similarities['above_threshold_count']
     item[f"{field_prefix}_logsumexp"] = log_sum_exp(list(similarities.values()))
-        
+          
     current_index += 1
     if current_index % 100 == 0:
       print(f"Processed {current_index} press releases")
+      
+  return press_releases
+
+
+def score_press_release_similarity_batched(
+    press_releases, 
+    phrases, 
+    field_prefix, 
+    overwrite=False,
+    batch_size=16 # about 320 for 90 seconds
+):
+  """Score press releases with multiple similarity metrics using batched processing."""
+  
+  # Get phrase embeddings once
+  phrase_embeddings = get_bart_embeddings(phrases)
+  
+  # Filter items that need processing
+  items_to_process = []
+  indices_to_process = []
+  
+  for i, item in enumerate(press_releases):
+    # Check if any of the metrics already exist
+    if all(f"{field_prefix}_{metric}" in item for metric in 
+      ['max', 'avg', 'top_3_avg', 'threshold_count']) and not overwrite:
+      continue
     
+    items_to_process.append(item['header'] + " " + item['body'])
+    indices_to_process.append(i)
+  
+  total_to_process = len(items_to_process)
+  print(f"Processing {total_to_process} press releases in batches of {batch_size}")
+  
+  # Process in batches
+  for batch_start in range(0, total_to_process, batch_size):
+    batch_end = min(batch_start + batch_size, total_to_process)
+    current_batch = items_to_process[batch_start:batch_end]
+    current_indices = indices_to_process[batch_start:batch_end]
+    
+    # Skip empty batches
+    if not current_batch:
+      continue
+    
+    # Get embeddings for all headers in the batch
+    batch_embeddings = get_bart_embeddings(current_batch)
+    
+    # Convert to numpy arrays for faster computation
+    batch_embeddings_np = batch_embeddings.cpu().numpy()
+    phrase_embeddings_np = phrase_embeddings.cpu().numpy()
+    
+    # Calculate all similarities at once using numpy
+    # Shape: (batch_size, num_phrases)
+    all_similarities = []
+    for i in range(len(batch_embeddings_np)):
+        # Repeat the current item embedding to match phrase embeddings shape
+        item_embeddings_repeated = np.repeat(
+            batch_embeddings_np[i:i+1], len(phrase_embeddings_np), axis=0
+        )
+        # Calculate similarities for this item with all phrases
+        similarities = cosine_similarity_np(item_embeddings_repeated, phrase_embeddings_np)
+        all_similarities.append(similarities)
+    
+    # Process each item in the batch
+    for i, idx in enumerate(current_indices):
+      # Get similarities for this item
+      item_similarities = all_similarities[i].tolist()
+      
+      # Calculate summary metrics
+      similarity_summary = summarize_similarity(item_similarities)
+      
+      # Store all metrics
+      press_releases[idx][f"{field_prefix}_max"] = similarity_summary['max_similarity']
+      press_releases[idx][f"{field_prefix}_avg"] = similarity_summary['avg_similarity']
+      press_releases[idx][f"{field_prefix}_top_3_avg"] = similarity_summary['top_3_avg']
+      press_releases[idx][f"{field_prefix}_threshold_count"] = similarity_summary['above_threshold_count']
+      press_releases[idx][f"{field_prefix}_logsumexp"] = log_sum_exp(list(similarity_summary.values()))
+
+    
+    print(f"Processed {batch_end}/{total_to_process} press releases")
   return press_releases
 
 
@@ -288,7 +422,7 @@ if __name__ == "__main__":
   )
   parser.add_argument(
     "--file-name", type=str, help="name of file to save results",
-    default="results/relevant_press_releases.csv"
+    default="results/press_releases/relevant_press_releases.csv"
   )
   parser.add_argument(
     "--use-spacy", action="store_true",
@@ -300,7 +434,7 @@ if __name__ == "__main__":
 
 
   # if no file name is provided, use the default name
-  file_name = args.file_name if args.file_name else "results/relevant_press_releases.csv"
+  file_name = args.file_name if args.file_name else "results/press_releases/relevant_press_releases.csv"
 
   # if file exists, read the data from the file
   if os.path.exists(file_name):
@@ -314,24 +448,26 @@ if __name__ == "__main__":
       keywords,
       existing_press_releases=[item['file_path'] for item in relevant_press_releases],
       overwirte=False
-    )
+    ) # 69965
     save_list_to_csv(relevant_press_releases, file_name)
   else:
     relevant_press_releases = read_list_from_csv(file_name)
   
   if not args.no_semantic:
     print(f"Processing {len(relevant_press_releases)} press releases")
-    relevant_press_releases = score_press_release_similarity(
-      relevant_press_releases, 
-      launch_phrases, "launch_similarity",
-      overwirte=False,
-      use_spacy=args.use_spacy
+    relevant_press_releases = score_press_release_similarity_batched(
+      press_releases=relevant_press_releases, 
+      phrases=launch_phrases, 
+      field_prefix="launch_similarity",
+      overwrite=False,
+      batch_size=1 # no real benefit from batching, but cosine_similarity_np saves time because of less i/o with torch
     )
-    relevant_press_releases = score_press_release_similarity(
-      relevant_press_releases, 
-      adoption_phrases, "adoption_similarity",
-      overwirte=False,
-      use_spacy=args.use_spacy
+    relevant_press_releases = score_press_release_similarity_batched(
+      press_releases=relevant_press_releases, 
+      phrases=adoption_phrases, 
+      field_prefix="adoption_similarity",
+      overwrite=False,
+      batch_size=1 # no real benefit from batching, but cosine_similarity_np saves time because of less i/o with torch
     )
     save_list_to_csv(relevant_press_releases, file_name)
   
