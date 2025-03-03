@@ -141,3 +141,5 @@ Thumbs.db
 .Rhistory
 
 results/press_releases/relevant_press_releases.csv
+results/press_releases/embeddings.csv
+results/press_releases/press_release_scores.csv

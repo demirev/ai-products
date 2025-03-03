@@ -39,6 +39,7 @@ def scrape_all_articles(
     # list all files in input_dir/category
     links = []
     file_names = os.listdir(f"{input_dir}/{category}")
+    random.shuffle(file_names)
     for file_name in file_names:
       file_full_name = f"{input_dir}/{category}/{file_name}"
       with open(file_full_name, "r") as file:

@@ -139,7 +139,7 @@ def log_sum_exp(scores, gamma=1.0):
   # For numerical stability, subtract the maximum scaled score
   max_score = np.max(scaled_scores)
   lse = max_score + np.log(np.sum(np.exp(scaled_scores - max_score)))
-  return lse / gamma
+  return lse / gamma - np.log(len(scores)) / gamma # normalize by number of scores
 
 
 def calculate_all_similarity_scores_batched(

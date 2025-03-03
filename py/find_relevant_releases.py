@@ -104,13 +104,14 @@ def calculate_spacy_similarity(text, search_queries, nlp=nlp):
   return similarities
 
 
-def summarize_similarity(similarities):
+def summarize_similarity(similarities, gamma=5, threshold=0.7):
   """Summarize similarity scores."""
   return {
     'max_similarity': max(similarities),
     'avg_similarity': sum(similarities) / len(similarities),
-    'top_3_avg': sum(sorted(similarities, reverse=True)[:3]) / 3,
-    'above_threshold_count': sum(1 for s in similarities if s > 0.5)
+    'third_highest': sorted(similarities, reverse=True)[2],
+    'above_threshold_count': sum(1 for s in similarities if s > threshold),
+    'logsumexp': log_sum_exp(similarities, gamma=gamma)
   }
 
 
@@ -239,6 +240,7 @@ def save_list_to_csv(data, file_path, append=False):
 
 
 def read_list_from_csv(file_path):
+    csv.field_size_limit(1000000)
     with open(file_path, mode='r', newline='', encoding='utf-8') as file:
         reader = csv.DictReader(file)
         return list(reader)
@@ -289,122 +291,201 @@ def log_sum_exp(scores, gamma=1.0):
   # For numerical stability, subtract the maximum scaled score
   max_score = np.max(scaled_scores)
   lse = max_score + np.log(np.sum(np.exp(scaled_scores - max_score)))
-  return lse / gamma
+  return lse / gamma - np.log(len(scores)) / gamma
 
+def save_embeddings_to_csv(
+    press_releases, 
+    csv_path="results/press_releases/embeddings.csv", 
+    overwrite=False
+):
+	"""
+	Generate and save embeddings for press releases to a CSV file.
+	
+	Args:
+		press_releases: List of press release dictionaries
+		csv_path: Path to save the embeddings CSV
+		overwrite: Whether to overwrite existing embeddings
+	"""
+	# Create directory if it doesn't exist
+	os.makedirs(os.path.dirname(csv_path), exist_ok=True)
+	
+	# Get existing file paths if the file exists and we're not overwriting
+	existing_file_paths = set()
+	if os.path.exists(csv_path) and not overwrite:
+		with open(csv_path, 'r', newline='', encoding='utf-8') as file:
+			reader = csv.reader(file)
+			headers = next(reader)  # Skip header row
+			for row in reader:
+				if row:  # Skip empty rows
+					existing_file_paths.add(row[0])  # First column is file_path
+	
+	# Filter press releases that need processing
+	to_process = []
+	for item in press_releases:
+		if item['file_path'] not in existing_file_paths or overwrite:
+			to_process.append(item)
+	
+	print(f"Processing embeddings for {len(to_process)} press releases")
+	
+	# Process each press release
+	for i, item in enumerate(to_process):
+		# Generate embedding
+		text = item['header'] + " " + item['body']
+		embedding = get_bart_embeddings(text)
+		
+		# Convert embedding tensor to list
+		embedding_list = embedding.cpu().numpy().flatten().tolist()
+		
+		# Prepare row data
+		row_data = [item['file_path']] + embedding_list
+		
+		# Append to CSV
+		file_exists = os.path.exists(csv_path)
+		with open(csv_path, 'a', newline='', encoding='utf-8') as file:
+			writer = csv.writer(file)
+			
+			# Write header if file is new
+			if not file_exists:
+				embedding_dim = len(embedding_list)
+				header = ['file_path'] + [f'dim_{j}' for j in range(embedding_dim)]
+				writer.writerow(header)
+			
+			# Write data row
+			writer.writerow(row_data)
+		
+		if (i + 1) % 10 == 0:
+			print(f"Processed {i + 1}/{len(to_process)} embeddings")
+	
+	print(f"Embeddings saved to {csv_path}")
 
 def score_press_release_similarity(
     press_releases, 
     phrases, 
     field_prefix, 
+    embeddings_file="results/press_releases/embeddings.csv",
     overwrite=False,
-    use_spacy=False
-  ):
-  """Score press releases with multiple similarity metrics."""
-  current_index = 0
-  phrase_embeddings = get_bart_embeddings(phrases) # embed once
-  
-  for item in press_releases:
-    # Check if any of the metrics already exist
-    if all(f"{field_prefix}_{metric}" in item for metric in 
-      ['max', 'avg', 'top_3_avg', 'threshold_count']) and not overwrite:
-      continue
-
-    similarities = calculate_semantic_similarity(
-      text=item['header'] + " " + item['body'], 
-      search_queries=phrases, 
-      text_embedding=None,
-      search_queries_embeddings=phrase_embeddings, 
-      use_spacy=use_spacy
-    )
-    # Store all metrics
-    item[f"{field_prefix}_max"] = similarities['max_similarity']
-    item[f"{field_prefix}_avg"] = similarities['avg_similarity']
-    item[f"{field_prefix}_top_3_avg"] = similarities['top_3_avg']
-    item[f"{field_prefix}_threshold_count"] = similarities['above_threshold_count']
-    item[f"{field_prefix}_logsumexp"] = log_sum_exp(list(similarities.values()))
-          
-    current_index += 1
-    if current_index % 100 == 0:
-      print(f"Processed {current_index} press releases")
-      
-  return press_releases
-
-
-def score_press_release_similarity_batched(
-    press_releases, 
-    phrases, 
-    field_prefix, 
-    overwrite=False,
-    batch_size=16 # about 320 for 90 seconds
+    batch_size=100
 ):
-  """Score press releases with multiple similarity metrics using batched processing."""
-  
-  # Get phrase embeddings once
-  phrase_embeddings = get_bart_embeddings(phrases)
-  
-  # Filter items that need processing
-  items_to_process = []
-  indices_to_process = []
-  
-  for i, item in enumerate(press_releases):
-    # Check if any of the metrics already exist
-    if all(f"{field_prefix}_{metric}" in item for metric in 
-      ['max', 'avg', 'top_3_avg', 'threshold_count']) and not overwrite:
-      continue
-    
-    items_to_process.append(item['header'] + " " + item['body'])
-    indices_to_process.append(i)
-  
-  total_to_process = len(items_to_process)
-  print(f"Processing {total_to_process} press releases in batches of {batch_size}")
-  
-  # Process in batches
-  for batch_start in range(0, total_to_process, batch_size):
-    batch_end = min(batch_start + batch_size, total_to_process)
-    current_batch = items_to_process[batch_start:batch_end]
-    current_indices = indices_to_process[batch_start:batch_end]
-    
-    # Skip empty batches
-    if not current_batch:
-      continue
-    
-    # Get embeddings for all headers in the batch
-    batch_embeddings = get_bart_embeddings(current_batch)
-    
-    # Convert to numpy arrays for faster computation
-    batch_embeddings_np = batch_embeddings.cpu().numpy()
-    phrase_embeddings_np = phrase_embeddings.cpu().numpy()
-    
-    # Calculate all similarities at once using numpy
-    # Shape: (batch_size, num_phrases)
-    all_similarities = []
-    for i in range(len(batch_embeddings_np)):
-        # Repeat the current item embedding to match phrase embeddings shape
-        item_embeddings_repeated = np.repeat(
-            batch_embeddings_np[i:i+1], len(phrase_embeddings_np), axis=0
-        )
-        # Calculate similarities for this item with all phrases
-        similarities = cosine_similarity_np(item_embeddings_repeated, phrase_embeddings_np)
-        all_similarities.append(similarities)
-    
-    # Process each item in the batch
-    for i, idx in enumerate(current_indices):
-      # Get similarities for this item
-      item_similarities = all_similarities[i].tolist()
-      
-      # Calculate summary metrics
-      similarity_summary = summarize_similarity(item_similarities)
-      
-      # Store all metrics
-      press_releases[idx][f"{field_prefix}_max"] = similarity_summary['max_similarity']
-      press_releases[idx][f"{field_prefix}_avg"] = similarity_summary['avg_similarity']
-      press_releases[idx][f"{field_prefix}_top_3_avg"] = similarity_summary['top_3_avg']
-      press_releases[idx][f"{field_prefix}_threshold_count"] = similarity_summary['above_threshold_count']
-      press_releases[idx][f"{field_prefix}_logsumexp"] = log_sum_exp(list(similarity_summary.values()))
+	"""
+	Score press releases with multiple similarity metrics using pre-computed embeddings.
+	Processes embeddings in batches to avoid loading all into memory at once.
+	"""
+	# Get phrase embeddings once
+	phrase_embeddings = get_bart_embeddings(phrases)
+	phrase_embeddings_np = phrase_embeddings.cpu().numpy()
+	
+	# Create a mapping of file_path to index in press_releases for quick lookup
+	press_release_map = {item['file_path']: i for i, item in enumerate(press_releases)}
+	
+	# Track which press releases need processing
+	to_process = set()
+	for i, item in enumerate(press_releases):
+		if not all(f"{field_prefix}_{metric}" in item for metric in 
+			['max', 'avg', 'third_highest', 'threshold_count', 'logsumexp']) or overwrite:
+			to_process.add(item['file_path'])
+	
+	print(f"Need to process {len(to_process)} press releases")
+	
+	# Process embeddings in batches
+	processed_count = 0
+	
+	if os.path.exists(embeddings_file):
+		with open(embeddings_file, 'r', newline='', encoding='utf-8') as file:
+			reader = csv.reader(file)
+			headers = next(reader)  # Skip header row
+			
+			current_batch = []
+			file_paths_batch = []
+			
+			for row in reader:
+				if not row:  # Skip empty rows
+					continue
+				
+				file_path = row[0]
+				
+				# Skip if this press release doesn't need processing
+				if file_path not in to_process or file_path not in press_release_map:
+					continue
+				
+				# Add to current batch
+				embedding_values = [float(val) for val in row[1:]]
+				current_batch.append(embedding_values)
+				file_paths_batch.append(file_path)
+				
+				# Process batch when it reaches the desired size
+				if len(current_batch) >= batch_size:
+					_process_batch(
+						batch_embeddings=current_batch, 
+						file_paths=file_paths_batch, 
+						press_releases=press_releases, 
+						press_release_map=press_release_map, 
+						phrase_embeddings_np=phrase_embeddings_np, 
+						field_prefix=field_prefix
+					)
+					processed_count += len(current_batch)
+					print(f"Processed {processed_count}/{len(to_process)} press releases")
+					
+					# Clear batch
+					current_batch = []
+					file_paths_batch = []
+			
+			# Process any remaining items in the last batch
+			if current_batch:
+				_process_batch(
+					batch_embeddings=current_batch, 
+					file_paths=file_paths_batch, 
+					press_releases=press_releases, 
+					press_release_map=press_release_map, 
+					phrase_embeddings_np=phrase_embeddings_np, 
+					field_prefix=field_prefix
+				)
+				processed_count += len(current_batch)
+				print(f"Processed {processed_count}/{len(to_process)} press releases")
+	else:
+		print(f"Warning: Embeddings file {embeddings_file} not found")
+	
+	print(f"Completed processing {processed_count} press releases")
+	return press_releases
 
-    
-    print(f"Processed {batch_end}/{total_to_process} press releases")
-  return press_releases
+
+def _process_batch(
+    batch_embeddings, 
+    file_paths, 
+    press_releases, 
+    press_release_map, 
+    phrase_embeddings_np, 
+    field_prefix
+  ):
+	"""Helper function to process a batch of embeddings."""
+	# Convert batch to numpy array
+	batch_embeddings_np = np.array(batch_embeddings)
+	
+	# Process each item in the batch
+	for i, file_path in enumerate(file_paths):
+		# Get the press release index
+		pr_index = press_release_map[file_path]
+		
+		# Calculate similarities for this item with all phrases
+		item_embedding = batch_embeddings_np[i:i+1]
+		item_embeddings_repeated = np.repeat(
+			item_embedding, len(phrase_embeddings_np), axis=0
+		)
+		
+		# Calculate cosine similarities
+		similarities = cosine_similarity_np(item_embeddings_repeated, phrase_embeddings_np)
+		
+		# Convert to list
+		similarities_list = similarities.tolist()
+		
+		# Calculate summary metrics
+		similarity_summary = summarize_similarity(similarities_list)
+		
+		# Store all metrics
+		press_releases[pr_index][f"{field_prefix}_max"] = similarity_summary['max_similarity']
+		press_releases[pr_index][f"{field_prefix}_avg"] = similarity_summary['avg_similarity']
+		press_releases[pr_index][f"{field_prefix}_third_highest"] = similarity_summary['third_highest']
+		press_releases[pr_index][f"{field_prefix}_threshold_count"] = similarity_summary['above_threshold_count']
+		press_releases[pr_index][f"{field_prefix}_logsumexp"] = similarity_summary['logsumexp']
 
 
 if __name__ == "__main__":
@@ -415,13 +496,19 @@ if __name__ == "__main__":
     description="A script to find AI-related press releases"
   )
   parser.add_argument(
-    "--no-keywords", action="store_true", help="skip keyword filtering"
+    "--no-keywords", 
+    action="store_true", 
+    help="skip keyword filtering"
   )
   parser.add_argument(
-    "--no-semantic", action="store_true", help="skip semantic similarity"
+    "--no-semantic", 
+    action="store_true", 
+    help="skip semantic similarity"
   )
   parser.add_argument(
-    "--file-name", type=str, help="name of file to save results",
+    "--file-name", 
+    type=str, 
+    help="name of file to save results",
     default="results/press_releases/relevant_press_releases.csv"
   )
   parser.add_argument(
@@ -429,12 +516,28 @@ if __name__ == "__main__":
     help="use spaCy for similarity calculation",
     default=False
   )
+  parser.add_argument(
+    "--save-embeddings", action="store_true",
+    help="save embeddings to CSV file",
+    default=False
+  )
+  parser.add_argument(
+    "--embeddings-file", type=str,
+    help="path to save embeddings CSV file",
+    default="results/press_releases/embeddings.csv"
+  )
+  parser.add_argument(
+    "--score-file", type=str,
+    help="path to save scores CSV file",
+    default="results/press_releases/press_release_scores.csv"
+  )
 
   args = parser.parse_args()
 
 
   # if no file name is provided, use the default name
   file_name = args.file_name if args.file_name else "results/press_releases/relevant_press_releases.csv"
+  score_file = args.score_file if args.score_file else "results/press_releases/scores.csv"
 
   # if file exists, read the data from the file
   if os.path.exists(file_name):
@@ -455,21 +558,36 @@ if __name__ == "__main__":
   
   if not args.no_semantic:
     print(f"Processing {len(relevant_press_releases)} press releases")
-    relevant_press_releases = score_press_release_similarity_batched(
-      press_releases=relevant_press_releases, 
+
+    save_embeddings_to_csv(
+      press_releases=relevant_press_releases,
+      csv_path=args.embeddings_file,
+      overwrite=False
+    )
+
+    press_release_scores = [
+        {k: v for k, v in pr.items() if k == 'header' or k == 'file_path'} 
+        for pr in relevant_press_releases
+    ]
+
+    press_release_scores = score_press_release_similarity(
+      press_releases=press_release_scores, 
       phrases=launch_phrases, 
       field_prefix="launch_similarity",
+      embeddings_file=args.embeddings_file,
       overwrite=False,
-      batch_size=1 # no real benefit from batching, but cosine_similarity_np saves time because of less i/o with torch
+      batch_size=100
     )
-    relevant_press_releases = score_press_release_similarity_batched(
-      press_releases=relevant_press_releases, 
+    press_release_scores = score_press_release_similarity(
+      press_releases=press_release_scores, 
       phrases=adoption_phrases, 
       field_prefix="adoption_similarity",
+      embeddings_file=args.embeddings_file,
       overwrite=False,
-      batch_size=1 # no real benefit from batching, but cosine_similarity_np saves time because of less i/o with torch
+      batch_size=100
     )
-    save_list_to_csv(relevant_press_releases, file_name)
+    save_list_to_csv(press_release_scores, score_file)
+ 
   
   print(datetime.now().strftime("%Y-%m-%d %H:%M:%S"))  
   print("Done")
