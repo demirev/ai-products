@@ -1,7 +1,6 @@
 import os
 import json
 import re
-import spacy
 import csv
 import argparse
 import torch
@@ -9,100 +8,73 @@ import numpy as np
 from transformers import AutoTokenizer, AutoModel
 from torch.nn.functional import cosine_similarity
 from datetime import datetime, timedelta
+from sentence_transformers import SentenceTransformer, util
 
 articles_path = "data/articles"
 
-nlp = spacy.load("en_core_web_lg")
-model_name = "facebook/bart-large"  # or "facebook/bart-base" for smaller model
-tokenizer = AutoTokenizer.from_pretrained(model_name)
-model = AutoModel.from_pretrained(model_name)
+# Group related constants together
+MODEL_CONFIG = {
+    "bart": {
+        "name": "facebook/bart-large",  # or "facebook/bart-base" for smaller model
+        "tokenizer": None,  # Will be initialized later
+        "model": None       # Will be initialized later
+    },
+    "sentence_transformer": {
+        "name": 'all-MiniLM-L6-v2',
+        "model": None       # Will be initialized later
+    }
+}
 
-keywords = [
-  "artificial intelligence", "AI", 
-  "ChatGPT", "GPT", "GPT-3", "OpenAI", "Open AI", 
-  "Claude", "Anthropic", "Llama", "Bard", "Gemini", "Deepmind",
-  "Grok", "Groq",
-  "LLM", "Turing", "DALL-E", "Codex", "Copilot", "Co-pilot",
-  "Large Language Model",   "Deep Learning", "Neural Network", "Machine Learning", "Natural Language Processing",
-  "Computer Vision", "Speech Recognition", "Generative Model", "Transformer",
-  "Reinforcement Learning", "Supervised Learning", "Unsupervised Learning",
-]
+# Organize semantic search terms into a single dictionary
+SEMANTIC_SEARCH_TERMS = {
+    "company_actions": [
+        "announce", "launch", "introduce", "release", 
+        "implement", "deploy", "adopt", "integrate"
+    ],
+    "ai_terms": [
+        "AI", "artificial intelligence", "machine learning", 
+        "LLM", "large language model"
+    ],
+    "product_terms": [
+        "solution", "platform", "system", "technology", 
+        "product", "service", "application"
+    ],
+    "business_impacts": [
+        "transform", "enhance", "improve", "optimize", "accelerate"
+    ]
+}
 
-company_actions = [
-  "announce", "launch", "introduce", "release", 
-  "implement", "deploy", "adopt", "integrate"
-]
-
-ai_terms = [
-  "AI", "artificial intelligence", "machine learning", 
-  "LLM", "large language model"
-]
-
-product_terms = [
-  "solution", "platform", "system", "technology", 
-  "product", "service", "application"
-]
-
-business_impacts = [
-  "transform", "enhance", "improve", "optimize", "accelerate"
-]
+# Initialize models
+def initialize_models():
+    # Initialize BART model
+    MODEL_CONFIG["bart"]["tokenizer"] = AutoTokenizer.from_pretrained(MODEL_CONFIG["bart"]["name"])
+    MODEL_CONFIG["bart"]["model"] = AutoModel.from_pretrained(MODEL_CONFIG["bart"]["name"])
+    
+    # Initialize Sentence Transformer model
+    MODEL_CONFIG["sentence_transformer"]["model"] = SentenceTransformer(MODEL_CONFIG["sentence_transformer"]["name"])
 
 # Generate phrases programmatically
 def generate_launch_phrases():
-  phrases = []
-  for action in company_actions[:4]:  # Use first 4 actions for launches
-    for ai in ai_terms:
-      for product in product_terms:  # Use first 4 product terms
-        phrases.append(f"{action} new {ai}-powered {product}")
-        phrases.append(f"{action} {ai}-based {product}")
-  return phrases
+    phrases = []
+    for action in SEMANTIC_SEARCH_TERMS["company_actions"][:4]:  # Use first 4 actions for launches
+        for ai in SEMANTIC_SEARCH_TERMS["ai_terms"]:
+            for product in SEMANTIC_SEARCH_TERMS["product_terms"]:
+                phrases.append(f"{action} new {ai}-powered {product}")
+                phrases.append(f"{action} {ai}-based {product}")
+    return phrases
 
 def generate_adoption_phrases():
-  phrases = []
-  for action in company_actions[4:]:  # Use last 4 actions for adoption
-    for ai in ai_terms:  # Use first 3 AI terms
-      for impact in business_impacts:  # Use first 4 impact terms
-        phrases.append(f"{action} {ai} to {impact} operations")
-        phrases.append(f"{action} {ai} for business transformation")
-  return phrases
+    phrases = []
+    for action in SEMANTIC_SEARCH_TERMS["company_actions"][4:]:  # Use last 4 actions for adoption
+        for ai in SEMANTIC_SEARCH_TERMS["ai_terms"]:
+            for impact in SEMANTIC_SEARCH_TERMS["business_impacts"]:
+                phrases.append(f"{action} {ai} to {impact} operations")
+                phrases.append(f"{action} {ai} for business transformation")
+    return phrases
 
-launch_phrases = generate_launch_phrases()
-adoption_phrases = generate_adoption_phrases()
-
-
-def lemmatize_text(text):
-  """Lemmatize the input text and return a list of lemmas."""
-  doc = nlp(text)
-  lemmas = [token.lemma_.lower() for token in doc if not token.is_stop and not token.is_punct]
-  return " ".join(lemmas)
-
-
-def search_keyphrases(content, keyphrases):
-  """Search for keyphrases in the content and return a dictionary with the results."""
-  # append word separator to each keyphrase
-  keyphrases = [" " + kp + " " for kp in keyphrases]
-  # replace all word separators with a single space
-  content = re.sub(r'\s+', ' ', content)
-  # remove punctuation and convert to lowercase
-  normalized_content = re.sub(r'[^\w\s]', '', content.lower()) # only words and word spaces
-  normalized_keyphrases = [re.sub(r'[^\w\s]', '', kp.lower()) for kp in keyphrases]
-  found_keyphrases = {kp: kp in normalized_content for kp in normalized_keyphrases}
-  return found_keyphrases
-
-
-def count_keyphrases(content, keyphrases):
-  """Count the occurrences of keyphrases in the content."""
-  found_keyphrases = search_keyphrases(content, keyphrases)
-  return sum(found_keyphrases.values())
-
-
-def calculate_spacy_similarity(text, search_queries, nlp=nlp):
-  """Original spaCy-based similarity calculation."""
-  doc = nlp(text)
-  similarities = [doc.similarity(nlp(sq)) for sq in search_queries]
-  
-  return similarities
-
+# Move these to be generated after model initialization
+launch_phrases = None
+adoption_phrases = None
 
 def summarize_similarity(similarities, gamma=5, threshold=0.7):
   """Summarize similarity scores."""
@@ -145,30 +117,38 @@ def cosine_similarity_np(v1, v2):
 
 
 def get_bart_embeddings(texts, max_length=512):
-  """Get embeddings from BART model for a single text or list of texts."""
-  # Handle both single text and list of texts
-  is_single_text = isinstance(texts, str)
-  texts_list = [texts] if is_single_text else texts
-  
-  # Prepare inputs
-  inputs = tokenizer(
-    texts_list,
-    max_length=max_length,
-    padding=True,
-    truncation=True,
-    return_tensors="pt"
-  )
-  
-  # Get model output
-  with torch.no_grad():
-    outputs = model(**inputs)
-  
-  # Use [CLS] token embedding (first token) as sentence representation
-  # Shape: (batch_size, hidden_size)
-  embeddings = outputs.last_hidden_state[:, 0, :]
-  
-  # Return single embedding if input was single text
-  return embeddings[0] if is_single_text else embeddings
+    """Get embeddings from BART model for a single text or list of texts."""
+    # Handle both single text and list of texts
+    is_single_text = isinstance(texts, str)
+    texts_list = [texts] if is_single_text else texts
+    
+    # Prepare inputs
+    inputs = MODEL_CONFIG["bart"]["tokenizer"](
+        texts_list,
+        max_length=max_length,
+        padding=True,
+        truncation=True,
+        return_tensors="pt"
+    )
+    
+    # Get model output
+    with torch.no_grad():
+        outputs = MODEL_CONFIG["bart"]["model"](**inputs)
+    
+    # Use [CLS] token embedding (first token) as sentence representation
+    embeddings = outputs.last_hidden_state[:, 0, :]
+    
+    # Return single embedding if input was single text
+    return embeddings[0] if is_single_text else embeddings
+
+
+def get_sentence_embeddings(texts):
+    """Get embeddings from sentence transformer for a single text or list of texts."""
+    # Handle both single text and list of texts
+    is_single_text = isinstance(texts, str)
+    texts_list = [texts] if is_single_text else texts
+    embeddings = MODEL_CONFIG["sentence_transformer"]["model"].encode(texts_list)
+    return embeddings
 
 
 def calculate_semantic_similarity(
@@ -176,54 +156,34 @@ def calculate_semantic_similarity(
     search_queries, 
     text_embedding = None,
     search_queries_embeddings = None, 
-    nlp=nlp, 
-    use_spacy=False
+    embeddings_function=get_sentence_embeddings
   ):
   """Calculate weighted semantic similarity scores using BART."""
-  if use_spacy:
-    similarities = calculate_spacy_similarity(text, search_queries, nlp=nlp)
-  else:
-    # Get text embedding
-    if text_embedding is None:
-      text_embedding = get_bart_embeddings(text)
-    
-    # Get embeddings for all search queries at once
-    if search_queries_embeddings is None:
-      query_embeddings = get_bart_embeddings(search_queries)
-    else:
-      query_embeddings = search_queries_embeddings
+
+  # Get text embedding
+  if text_embedding is None:
+    text_embedding = embeddings_function(text)
   
-    # Calculate cosine similarities
-    # Expand text embedding to match query embeddings shape
-    text_embedding_expanded = text_embedding.expand(len(query_embeddings), -1)
-    similarities = cosine_similarity(
-      text_embedding_expanded, 
-      query_embeddings
-    ).squeeze().tolist()
+  # Get embeddings for all search queries at once
+  if search_queries_embeddings is None:
+    query_embeddings = embeddings_function(search_queries)
+  else:
+    query_embeddings = search_queries_embeddings
+
+  # Calculate cosine similarities
+  # Expand text embedding to match query embeddings shape
+  # text_embedding_expanded = text_embedding.expand(len(query_embeddings), -1)
+  # similarities = cosine_similarity(
+  #   text_embedding_expanded, 
+  #   query_embeddings
+  # ).squeeze().tolist()
+
+  similarities = util.cos_sim(text_embedding, query_embeddings)
   
   if isinstance(similarities, float):
     similarities = [similarities]
 
   return summarize_similarity(similarities)
-
-
-def replace_quotes(text, field_names):
-  """Replace single quotes with double quotes and fix some JSON formatting issues."""
-  # replace all double quotes with single quotes
-  text = re.sub(r'"', "'", text)
-  # bring back double quotes for field names and values
-  for field in field_names:
-    field = re.escape(field)
-    text = re.sub(rf"'{field}'", rf'"{field}"', text)
-    text = re.sub(rf"\"{field}\":\s*'", rf'"{field}": "', text)
-    text = re.sub(rf"',\s*\"{field}\"", rf'", "{field}"', text)
-  # bring back double quotes before last }
-  text = re.sub(r"'\s*}", '"}', text)
-  # replace double escape with single escape
-  text = re.sub(r'\\', '', text)
-  # remove new lines
-  text = re.sub(r'\n', '', text)
-  return text
 
 
 def save_list_to_csv(data, file_path, append=False):
@@ -246,38 +206,6 @@ def read_list_from_csv(file_path):
         return list(reader)
     
 
-def find_press_releases_with_keyphrases(directory, keyphrases, existing_press_releases=[], overwirte=False):
-  """Traverse the directory and find press releases related to AI product launches or adoption."""
-  relevant_press_releases = []
-  for root, dirs, files in os.walk(directory):
-    for file in files:
-      if file.endswith(".json"):
-        try:
-          file_path = os.path.join(root, file)
-          if file_path in existing_press_releases and not overwirte:
-            continue
-          with open(file_path, 'r', encoding='utf-8') as f:
-            file_content = f.read()
-            #return(file_content)
-            file_content = replace_quotes(
-              file_content, 
-              ['header', 'uploader', 'uploader_link', 'date', 'body']
-            ) # fix some wrongly saved json files
-            data = json.loads(file_content)
-            # Combine header and body to search for keywords
-            content = data.get('header', '') + " " + data.get('body', '')
-            if count_keyphrases(content, keyphrases) > 0:
-              relevant_press_releases.append({
-                'header': data.get('header'),
-                'body': data.get('body'),
-                'date': data.get('date'),
-                'file_path': file_path
-              })
-        except Exception as e:
-          print(f"Error processing {os.path.join(root, file)}: {e}")
-  return relevant_press_releases
-
-
 def log_sum_exp(scores, gamma=1.0):
   """
   Compute the log-sum-exp of a list or array of scores with scaling parameter gamma.
@@ -293,10 +221,12 @@ def log_sum_exp(scores, gamma=1.0):
   lse = max_score + np.log(np.sum(np.exp(scaled_scores - max_score)))
   return lse / gamma - np.log(len(scores)) / gamma
 
+
 def save_embeddings_to_csv(
     press_releases, 
     csv_path="results/press_releases/embeddings.csv", 
-    overwrite=False
+    overwrite=False,
+    embeddings_function=get_sentence_embeddings
 ):
 	"""
 	Generate and save embeddings for press releases to a CSV file.
@@ -331,10 +261,13 @@ def save_embeddings_to_csv(
 	for i, item in enumerate(to_process):
 		# Generate embedding
 		text = item['header'] + " " + item['body']
-		embedding = get_bart_embeddings(text)
+		embedding = embeddings_function(text)
 		
 		# Convert embedding tensor to list
-		embedding_list = embedding.cpu().numpy().flatten().tolist()
+		if isinstance(embedding, torch.Tensor):
+			embedding_list = embedding.cpu().numpy().flatten().tolist()
+		else:
+			embedding_list = embedding.flatten().tolist()
 		
 		# Prepare row data
 		row_data = [item['file_path']] + embedding_list
@@ -358,21 +291,27 @@ def save_embeddings_to_csv(
 	
 	print(f"Embeddings saved to {csv_path}")
 
+
 def score_press_release_similarity(
     press_releases, 
     phrases, 
     field_prefix, 
     embeddings_file="results/press_releases/embeddings.csv",
     overwrite=False,
-    batch_size=100
+    batch_size=100,
+    embeddings_function=get_sentence_embeddings
 ):
 	"""
 	Score press releases with multiple similarity metrics using pre-computed embeddings.
 	Processes embeddings in batches to avoid loading all into memory at once.
 	"""
 	# Get phrase embeddings once
-	phrase_embeddings = get_bart_embeddings(phrases)
-	phrase_embeddings_np = phrase_embeddings.cpu().numpy()
+	phrase_embeddings = embeddings_function(phrases)
+	# Check if phrase_embeddings is already a numpy array or a torch tensor
+	if isinstance(phrase_embeddings, torch.Tensor):
+		phrase_embeddings_np = phrase_embeddings.cpu().numpy()
+	else:
+		phrase_embeddings_np = phrase_embeddings
 	
 	# Create a mapping of file_path to index in press_releases for quick lookup
 	press_release_map = {item['file_path']: i for i, item in enumerate(press_releases)}
@@ -467,12 +406,10 @@ def _process_batch(
 		
 		# Calculate similarities for this item with all phrases
 		item_embedding = batch_embeddings_np[i:i+1]
-		item_embeddings_repeated = np.repeat(
-			item_embedding, len(phrase_embeddings_np), axis=0
-		)
 		
 		# Calculate cosine similarities
-		similarities = cosine_similarity_np(item_embeddings_repeated, phrase_embeddings_np)
+		#similarities = cosine_similarity_np(item_embeddings_repeated, phrase_embeddings_np)
+		similarities = util.cos_sim(item_embedding, phrase_embeddings_np)
 		
 		# Convert to list
 		similarities_list = similarities.tolist()
@@ -489,106 +426,88 @@ def _process_batch(
 
 
 if __name__ == "__main__":
-  print("Starting")
-  print(datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+    print("Starting")
+    print(datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
 
-  parser = argparse.ArgumentParser(
-    description="A script to find AI-related press releases"
-  )
-  parser.add_argument(
-    "--no-keywords", 
-    action="store_true", 
-    help="skip keyword filtering"
-  )
-  parser.add_argument(
-    "--no-semantic", 
-    action="store_true", 
-    help="skip semantic similarity"
-  )
-  parser.add_argument(
-    "--file-name", 
-    type=str, 
-    help="name of file to save results",
-    default="results/press_releases/relevant_press_releases.csv"
-  )
-  parser.add_argument(
-    "--use-spacy", action="store_true",
-    help="use spaCy for similarity calculation",
-    default=False
-  )
-  parser.add_argument(
-    "--save-embeddings", action="store_true",
-    help="save embeddings to CSV file",
-    default=False
-  )
-  parser.add_argument(
-    "--embeddings-file", type=str,
-    help="path to save embeddings CSV file",
-    default="results/press_releases/embeddings.csv"
-  )
-  parser.add_argument(
-    "--score-file", type=str,
-    help="path to save scores CSV file",
-    default="results/press_releases/press_release_scores.csv"
-  )
+    parser = argparse.ArgumentParser(
+        description="A script to find AI-related press releases"
+    )
+    parser.add_argument(
+        "--source-file", 
+        type=str, 
+        help="name of file to read press releases from",
+        default="results/press_releases/filtered_press_releases.csv"
+    )
+    parser.add_argument(
+        "--results-file", 
+        type=str, 
+        help="name of file to save results",
+        default="results/press_releases/relevant_press_releases.csv"
+    )
+    parser.add_argument(
+        "--save-embeddings", action="store_true",
+        help="save embeddings to CSV file",
+        default=False
+    )
+    parser.add_argument(
+        "--embeddings-file", type=str,
+        help="path to save embeddings CSV file",
+        default="results/press_releases/embeddings.csv"
+    )
+    parser.add_argument(
+        "--score-file", type=str,
+        help="path to save scores CSV file",
+        default="results/press_releases/press_release_scores.csv"
+    )
 
-  args = parser.parse_args()
+    args = parser.parse_args()
 
+    # Fix: Use args.results_file instead of args.file_name
+    file_name = args.results_file
+    score_file = args.score_file
 
-  # if no file name is provided, use the default name
-  file_name = args.file_name if args.file_name else "results/press_releases/relevant_press_releases.csv"
-  score_file = args.score_file if args.score_file else "results/press_releases/scores.csv"
+    # Initialize models before using them
+    initialize_models()
+    
+    # Generate phrases after model initialization
+    launch_phrases = generate_launch_phrases()
+    adoption_phrases = generate_adoption_phrases()
 
-  # if file exists, read the data from the file
-  if os.path.exists(file_name):
-    relevant_press_releases = read_list_from_csv(file_name)
-  else:
-    relevant_press_releases = []
-
-  if not args.no_keywords:
-    relevant_press_releases = find_press_releases_with_keyphrases(
-      articles_path, 
-      keywords,
-      existing_press_releases=[item['file_path'] for item in relevant_press_releases],
-      overwirte=False
-    ) # 69965
-    save_list_to_csv(relevant_press_releases, file_name)
-  else:
-    relevant_press_releases = read_list_from_csv(file_name)
-  
-  if not args.no_semantic:
+    relevant_press_releases = read_list_from_csv(args.source_file)
+    
     print(f"Processing {len(relevant_press_releases)} press releases")
 
     save_embeddings_to_csv(
-      press_releases=relevant_press_releases,
-      csv_path=args.embeddings_file,
-      overwrite=False
+        press_releases=relevant_press_releases,
+        csv_path=args.embeddings_file,
+        overwrite=False
     )
 
+    # Extract only needed fields for scoring
     press_release_scores = [
         {k: v for k, v in pr.items() if k == 'header' or k == 'file_path'} 
         for pr in relevant_press_releases
     ]
 
+    # Score press releases
     press_release_scores = score_press_release_similarity(
-      press_releases=press_release_scores, 
-      phrases=launch_phrases, 
-      field_prefix="launch_similarity",
-      embeddings_file=args.embeddings_file,
-      overwrite=False,
-      batch_size=100
+        press_releases=press_release_scores, 
+        phrases=launch_phrases, 
+        field_prefix="launch_similarity",
+        embeddings_file=args.embeddings_file,
+        overwrite=False,
+        batch_size=100
     )
     press_release_scores = score_press_release_similarity(
-      press_releases=press_release_scores, 
-      phrases=adoption_phrases, 
-      field_prefix="adoption_similarity",
-      embeddings_file=args.embeddings_file,
-      overwrite=False,
-      batch_size=100
+        press_releases=press_release_scores, 
+        phrases=adoption_phrases, 
+        field_prefix="adoption_similarity",
+        embeddings_file=args.embeddings_file,
+        overwrite=False,
+        batch_size=100
     )
     save_list_to_csv(press_release_scores, score_file)
  
-  
-  print(datetime.now().strftime("%Y-%m-%d %H:%M:%S"))  
-  print("Done")
-  print(f"Results saved to {file_name}")
+    print(datetime.now().strftime("%Y-%m-%d %H:%M:%S"))  
+    print("Done")
+    print(f"Results saved to {file_name}")
