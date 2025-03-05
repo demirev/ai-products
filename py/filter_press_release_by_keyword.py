@@ -152,7 +152,7 @@ if __name__ == "__main__":
       keywords,
       existing_press_releases=[item['file_path'] for item in relevant_press_releases],
       overwirte=args.overwrite
-    ) # 69965
+    ) # 132571
   save_list_to_csv(relevant_press_releases, file_name)
   
   print(datetime.now().strftime("%Y-%m-%d %H:%M:%S"))  

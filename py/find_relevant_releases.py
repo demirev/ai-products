@@ -10,8 +10,6 @@ from torch.nn.functional import cosine_similarity
 from datetime import datetime, timedelta
 from sentence_transformers import SentenceTransformer, util
 
-articles_path = "data/articles"
-
 # Group related constants together
 MODEL_CONFIG = {
     "bart": {
@@ -20,7 +18,7 @@ MODEL_CONFIG = {
         "model": None       # Will be initialized later
     },
     "sentence_transformer": {
-        "name": 'all-MiniLM-L6-v2',
+        "name": 'all-mpnet-base-v2', # all-MiniLM-L6-v2 (smaller - expected 6h embedding time) or all-mpnet-base-v2 (larger - 5x slower)
         "model": None       # Will be initialized later
     }
 }
@@ -72,10 +70,6 @@ def generate_adoption_phrases():
                 phrases.append(f"{action} {ai} for business transformation")
     return phrases
 
-# Move these to be generated after model initialization
-launch_phrases = None
-adoption_phrases = None
-
 def summarize_similarity(similarities, gamma=5, threshold=0.7):
   """Summarize similarity scores."""
   return {
@@ -85,7 +79,6 @@ def summarize_similarity(similarities, gamma=5, threshold=0.7):
     'above_threshold_count': sum(1 for s in similarities if s > threshold),
     'logsumexp': log_sum_exp(similarities, gamma=gamma)
   }
-
 
 def cosine_similarity_np(v1, v2):
   # Ensure input arrays are numpy arrays
@@ -151,41 +144,6 @@ def get_sentence_embeddings(texts):
     return embeddings
 
 
-def calculate_semantic_similarity(
-    text, 
-    search_queries, 
-    text_embedding = None,
-    search_queries_embeddings = None, 
-    embeddings_function=get_sentence_embeddings
-  ):
-  """Calculate weighted semantic similarity scores using BART."""
-
-  # Get text embedding
-  if text_embedding is None:
-    text_embedding = embeddings_function(text)
-  
-  # Get embeddings for all search queries at once
-  if search_queries_embeddings is None:
-    query_embeddings = embeddings_function(search_queries)
-  else:
-    query_embeddings = search_queries_embeddings
-
-  # Calculate cosine similarities
-  # Expand text embedding to match query embeddings shape
-  # text_embedding_expanded = text_embedding.expand(len(query_embeddings), -1)
-  # similarities = cosine_similarity(
-  #   text_embedding_expanded, 
-  #   query_embeddings
-  # ).squeeze().tolist()
-
-  similarities = util.cos_sim(text_embedding, query_embeddings)
-  
-  if isinstance(similarities, float):
-    similarities = [similarities]
-
-  return summarize_similarity(similarities)
-
-
 def save_list_to_csv(data, file_path, append=False):
   mode = 'a' if append else 'w'
   with open(file_path, mode=mode, newline='', encoding='utf-8') as file:
@@ -238,6 +196,11 @@ def save_embeddings_to_csv(
 	"""
 	# Create directory if it doesn't exist
 	os.makedirs(os.path.dirname(csv_path), exist_ok=True)
+	
+	# If overwrite is True, delete the existing file
+	if overwrite and os.path.exists(csv_path):
+		os.remove(csv_path)
+		print(f"Deleted existing embeddings file for overwrite: {csv_path}")
 	
 	# Get existing file paths if the file exists and we're not overwriting
 	existing_file_paths = set()
@@ -407,12 +370,15 @@ def _process_batch(
 		# Calculate similarities for this item with all phrases
 		item_embedding = batch_embeddings_np[i:i+1]
 		
+		# Convert numpy arrays to torch tensors with consistent dtype
+		item_tensor = torch.tensor(item_embedding, dtype=torch.float32)
+		phrase_tensor = torch.tensor(phrase_embeddings_np, dtype=torch.float32)
+		
 		# Calculate cosine similarities
-		#similarities = cosine_similarity_np(item_embeddings_repeated, phrase_embeddings_np)
-		similarities = util.cos_sim(item_embedding, phrase_embeddings_np)
+		similarities = util.cos_sim(item_tensor, phrase_tensor)
 		
 		# Convert to list
-		similarities_list = similarities.tolist()
+		similarities_list = similarities[0].tolist()  # Get the first row since we have a single item
 		
 		# Calculate summary metrics
 		similarity_summary = summarize_similarity(similarities_list)
@@ -445,11 +411,6 @@ if __name__ == "__main__":
         default="results/press_releases/relevant_press_releases.csv"
     )
     parser.add_argument(
-        "--save-embeddings", action="store_true",
-        help="save embeddings to CSV file",
-        default=False
-    )
-    parser.add_argument(
         "--embeddings-file", type=str,
         help="path to save embeddings CSV file",
         default="results/press_releases/embeddings.csv"
@@ -463,8 +424,10 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     # Fix: Use args.results_file instead of args.file_name
-    file_name = args.results_file
+    results_file = args.results_file
     score_file = args.score_file
+    source_file = args.source_file
+    embeddings_file = args.embeddings_file
 
     # Initialize models before using them
     initialize_models()
@@ -473,14 +436,15 @@ if __name__ == "__main__":
     launch_phrases = generate_launch_phrases()
     adoption_phrases = generate_adoption_phrases()
 
-    relevant_press_releases = read_list_from_csv(args.source_file)
+    relevant_press_releases = read_list_from_csv(source_file)
     
     print(f"Processing {len(relevant_press_releases)} press releases")
 
     save_embeddings_to_csv(
         press_releases=relevant_press_releases,
         csv_path=args.embeddings_file,
-        overwrite=False
+        overwrite=False,
+        embeddings_function=get_sentence_embeddings
     )
 
     # Extract only needed fields for scoring
@@ -510,4 +474,4 @@ if __name__ == "__main__":
  
     print(datetime.now().strftime("%Y-%m-%d %H:%M:%S"))  
     print("Done")
-    print(f"Results saved to {file_name}")
+    print(f"Results saved to {results_file}")
