@@ -6,11 +6,20 @@ import argparse
 from find_relevant_releases import replace_quotes, read_list_from_csv, calculate_semantic_similarity, save_list_to_csv
 from datetime import datetime
 from dotenv import load_dotenv
+from pydantic import BaseModel
 from openai import OpenAI
-
+from typing import Literal
 load_dotenv()
 
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+
+class DocumentType(BaseModel):
+  document_type: Literal[
+    "AI Product Launch Announcement", 
+    "AI Product Adoption Announcement", 
+    "Report describing an AI Product",
+    "Other"
+  ]
 
 def read_random_article(articles_path = "data/articles", scored_relaese_path = "data/relevant_releases.csv"):
   # Selects a random file from articles_path and reads it. Used for testing extract_verb_noun_pairs
@@ -108,19 +117,64 @@ def score_press_release_similarity(
   return accepted_releases, rejected_releases
 
 
-def extract_capability_string(
+def query_gpt(
   text, 
   sysprompt = open("py/extract_capability_prompt.txt", "r").read(), 
-  client=client
+  client=client,
+  responseFormat = None,
+  model = "gpt-4o"
 ):
-  completion = client.chat.completions.create(
-    model="gpt-4-turbo-preview",
-    messages=[
-      {"role": "system", "content": sysprompt},
-      {"role": "user", "content": text}
-    ]
-  )
-  return completion.choices[0].message.content
+  if responseFormat is None:
+    completion = client.chat.completions.create(
+      model=model,
+      messages=[
+        {"role": "developer", "content": sysprompt},
+        {"role": "user", "content": text}
+      ]
+    )
+    return completion.choices[0].message.content
+  else:
+    completion = client.beta.chat.completions.parse(
+      model=model,
+      messages=[
+        {"role": "developer", "content": sysprompt},
+        {"role": "user", "content": text}
+      ],
+      response_format=responseFormat
+    )
+    return completion.choices[0].message.parsed
+
+
+def classify_all_releases_llm(
+  scored_releases,
+  sysprompt = open("py/classify_release_prompt.txt", "r").read(),
+  client=client,
+  file_name = None
+):
+  i = 0
+  for release in scored_releases:
+    i += 1
+    print(f"processing release {i} of {len(scored_releases)}")
+    if 'document_type' in release and release['document_type'] != '':
+      print("document type already exists")
+      continue
+    content = release.get('header', '') + " " + release.get('body', '')
+    if content != '':
+      release.update({
+        'document_type': query_gpt(
+          content, 
+          sysprompt=sysprompt, 
+          client=client, 
+          responseFormat=DocumentType,
+          model="gpt-4o-mini"
+        ).document_type # 0.7 sec / document with 4o. $0.0045 per document. 0.00025 per document with 4o-mini
+      })
+    else:
+      release.update({
+        'document_type': 'Other'
+      })
+    if file_name is not None and i % 10 == 0:
+      save_list_to_csv(scored_releases, file_name, append=False)
 
 
 def extract_capability_strings_for_all_releases(
@@ -139,7 +193,7 @@ def extract_capability_strings_for_all_releases(
     content = release.get('header', '') + " " + release.get('body', '')
     if content != '':
       release.update({
-        'capability_string': extract_capability_string(
+        'capability_string': query_gpt(
           content, sysprompt=sysprompt, client=client
         )
       })

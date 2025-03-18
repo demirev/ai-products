@@ -28,7 +28,7 @@ def search_keyphrases(content, keyphrases):
   # replace all word separators with a single space
   content = re.sub(r'\s+', ' ', content)
   # remove punctuation and convert to lowercase
-  normalized_content = re.sub(r'[^\w\s]', '', content.lower()) # only words and word spaces
+  normalized_content = " " + re.sub(r'[^\w\s]', '', content.lower()) + " " # add spaces at beginning and end
   normalized_keyphrases = [re.sub(r'[^\w\s]', '', kp.lower()) for kp in keyphrases]
   found_keyphrases = {kp: kp in normalized_content for kp in normalized_keyphrases}
   return found_keyphrases
@@ -152,8 +152,19 @@ if __name__ == "__main__":
       keywords,
       existing_press_releases=[item['file_path'] for item in relevant_press_releases],
       overwirte=args.overwrite
-    ) # 132571
+    ) # 132590
   save_list_to_csv(relevant_press_releases, file_name)
+  
+  # Save a random sample of 2000 documents (or all if fewer than 2000)
+  sample_size = min(2000, len(relevant_press_releases))
+  if sample_size > 0:
+    # Create sample file name based on original file name
+    sample_file_name = file_name.replace('.csv', '_sample.csv')
+    # Take random sample without replacement
+    random_indices = np.random.choice(len(relevant_press_releases), sample_size, replace=False)
+    sample_press_releases = [relevant_press_releases[i] for i in random_indices]
+    save_list_to_csv(sample_press_releases, sample_file_name)
+    print(f"Random sample of {sample_size} documents saved to {sample_file_name}")
   
   print(datetime.now().strftime("%Y-%m-%d %H:%M:%S"))  
   print("Done")

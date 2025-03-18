@@ -21,7 +21,8 @@ The full details about the method and the results, as well as connections to exi
 ## Reproducability
 
 1. Run `py/scrape_releases.py` - populates folders data/links and data/articles 
-2. Run `py/find_relevant_releases.py` - creates results/relevant_press_releases.csv (appends if it exists)
+2. Run `py/filter_press_release_by_keyword.py` - creates data/filtered_press_releases.csv that contains only press releases that contain certain keywords related to AI (overwrites)
+2. Run `py/find_relevant_releases_finetune.py` - creates results/relevant_press_releases.csv by first finetuning a DistilBERT model on a small labeled dataset of relevant and non-relevant press releases, and then using the model to score the press releases in data/filtered_press_releases.csv (appends if it exists)
 3. Run `py/extract_product_capabilities.py` - creates results/processed_press_releases.csv (appends if it exists). Executes GPT queries.
 4. Run `py/match_capabilities_to_skills.py` - creates results/scored_esco_skills.csv (overwrites)
 5. Run `py/scrape_cedefop.py` - creates data/skills_intelligence_data.csv (overwrites)

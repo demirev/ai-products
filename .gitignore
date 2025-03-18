@@ -145,3 +145,7 @@ results/press_releases/embeddings.csv
 results/press_releases/press_release_scores.csv
 results/press_releases/filtered_press_releases.csv
 temp/
+results/models/
+results/press_releases/classified_press_releases.csv
+results/press_releases/filtered_press_releases_sample.csv
+results/press_releases/manual_labels.csv
