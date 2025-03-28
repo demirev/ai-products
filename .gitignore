@@ -149,3 +149,7 @@ results/models/
 results/press_releases/classified_press_releases.csv
 results/press_releases/filtered_press_releases_sample.csv
 results/press_releases/manual_labels.csv
+results/press_releases/classified_press_releases_samples.csv
+results/press_releases/filtered_press_releases_scored.csv
+results/press_releases/filtered_press_releases_scored_accepted_sample.csv
+results/press_releases/filtered_press_releases_scored_rejected_sample.csv

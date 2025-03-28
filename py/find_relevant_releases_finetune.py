@@ -62,6 +62,12 @@ def clean_text(text):
 	text = re.sub(r't{3,}', ' ', text)
 	# Then remove 3+ consecutive 'n's
 	text = re.sub(r'n{3,}', ' ', text)
+	
+	# Remove promotional text and anything that follows it
+	promo_text = "WANT YOUR COMPANY'S NEWS FEATURED ON PRNEWSWIRE"
+	if promo_text in text:
+		text = text.split(promo_text)[0].strip()
+	
 	return text
 
 
@@ -427,6 +433,33 @@ def classify_press_releases(
 	return press_releases
 
 
+def save_random_samples(input_file, output_file, n_samples=200):
+	"""
+	Save a random sample of rows from the input CSV file to the output CSV file.
+	
+	Args:
+		input_file: Path to input CSV file
+		output_file: Path to output CSV file for the samples
+		n_samples: Number of random samples to save
+	"""
+	# Read the input file
+	df = pd.read_csv(input_file)
+	
+	# Determine number of samples to take
+	n_samples = min(n_samples, len(df))
+	
+	# Take random samples
+	sampled_df = df.sample(n=n_samples, random_state=42)
+	
+	# Create output directory if it doesn't exist
+	os.makedirs(os.path.dirname(output_file), exist_ok=True)
+	
+	# Save to CSV
+	sampled_df.to_csv(output_file, index=False)
+	
+	print(f"Saved {n_samples} random samples to {output_file}")
+
+
 if __name__ == "__main__":
 	print("Starting")
 	print(datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
@@ -502,6 +535,14 @@ if __name__ == "__main__":
 			output_file=args.output_file,
 			model_dir=args.output_dir,
 			batch_size=args.batch_size
+		)
+		
+		# Save random samples for manual inspection
+		samples_output_file = args.output_file.replace('.csv', '_samples.csv')
+		save_random_samples(
+			args.output_file, 
+			samples_output_file, 
+			n_samples=500
 		)
 	else:
 		# Training mode - fine-tune model on labeled data

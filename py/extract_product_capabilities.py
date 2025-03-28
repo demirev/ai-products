@@ -1,9 +1,9 @@
 import os
 import json
-import spacy
 import random
 import argparse
-from find_relevant_releases import replace_quotes, read_list_from_csv, calculate_semantic_similarity, save_list_to_csv
+from py.filter_press_release_by_keyword import replace_quotes, read_list_from_csv, save_list_to_csv
+from py.find_relevant_releases_finetune import clean_text
 from datetime import datetime
 from dotenv import load_dotenv
 from pydantic import BaseModel
@@ -17,9 +17,28 @@ class DocumentType(BaseModel):
   document_type: Literal[
     "AI Product Launch Announcement", 
     "AI Product Adoption Announcement", 
-    "Report describing an AI Product",
-    "Other"
+    "AI Product Market Report",
+    "AI Product News",
+    "Not Relevant"
   ]
+
+class DocumentTypeWithIntent(DocumentType):
+  intent_type: Literal[
+    "End-to-End Processing",
+    "Replacement Messaging",
+    "Volume/Scale Emphasis",
+    "Self-Correction Mechanisms",
+    "Expert Amplification",
+    "Insight Generation",
+    "Human-in-the-Loop Design",
+    "Not Relevant"
+  ]
+
+class DocumentTypeWithIntentAndCapabilities(DocumentTypeWithIntent):
+  ai_capabilities: list[str]
+
+class Capabilities(BaseModel):
+  capabilities: list[str]
 
 def read_random_article(articles_path = "data/articles", scored_relaese_path = "data/relevant_releases.csv"):
   # Selects a random file from articles_path and reads it. Used for testing extract_verb_noun_pairs
@@ -59,59 +78,41 @@ def read_specific_article(article_path):
     return content
 
 
+def get_unique_releases(all_releases):
+  unique_releases = []
+  seen_headers = set()
+  for release in all_releases:
+    if release['header'] not in seen_headers:
+      unique_releases.append(release)
+      seen_headers.add(release['header'])
+  return unique_releases
+
+
 def score_press_release_similarity(
-  scored_releases, 
-  threshold_release = {
-    "adoption" : {
-      "max" : 0.7,
-      "avg" : 0.5,
-      "top_3_avg" : 0.65,
-      "threshold_count" : 0.5,
-      "logsumexp" : 0.5
-    },
-    "launch" : {
-      "max" : 0.7,
-      "avg" : 0.5,
-      "top_3_avg" : 0.65,
-      "threshold_count" : 0.5,
-      "logsumexp" : 0.5
-    }
-  }, 
+  all_releases,
+  all_scores,
+  threshold_release = 0.7, # > 75% of manually classified releases are above this threshold
   dedup_headers = True
 ):
   accepted_releases = []
   rejected_releases = []
   
-  for release in scored_releases:
-    adoption_criteria = (
-      float(release['adoption_similarity_max']) > threshold_release['adoption']['max'] +
-      float(release['adoption_similarity_avg']) > threshold_release['adoption']['avg'] +
-      float(release['adoption_similarity_top_3_avg']) > threshold_release['adoption']['top_3_avg'] +
-      float(release['adoption_similarity_threshold_count']) > threshold_release['adoption']['threshold_count'] +
-      float(release['adoption_similarity_logsumexp']) > threshold_release['adoption']['logsumexp'] >= 2
-    )
-    
-    launch_criteria = (
-      float(release['launch_similarity_max']) > threshold_release['launch']['max'] +
-      float(release['launch_similarity_avg']) > threshold_release['launch']['avg'] +
-      float(release['launch_similarity_top_3_avg']) > threshold_release['launch']['top_3_avg'] +
-      float(release['launch_similarity_threshold_count']) > threshold_release['launch']['threshold_count'] +
-      float(release['launch_similarity_logsumexp']) > threshold_release['launch']['logsumexp'] >= 2
-    )
-    
-    if adoption_criteria or launch_criteria:
+  for release in all_releases:
+    # Find the matching score item where file_path matches
+    matching_score = next((score for score in all_scores if score['file_path'] == release['file_path']), None)
+    if matching_score:
+      classification_score = float(matching_score.get('relevance_probability', 0))
+    else:
+      classification_score = 0  # Default if no matching score found
+      
+    if classification_score >= threshold_release:
       accepted_releases.append(release)
     else:
       rejected_releases.append(release)
 
   if dedup_headers:
     # remove releases with duplicate header
-    seen_headers = set()
-    unique_releases = []
-    for release in accepted_releases:
-      if release['header'] not in seen_headers:
-        unique_releases.append(release)
-        seen_headers.add(release['header'])
+    unique_releases = get_unique_releases(accepted_releases)
     accepted_releases = unique_releases
 
   return accepted_releases, rejected_releases
@@ -119,67 +120,114 @@ def score_press_release_similarity(
 
 def query_gpt(
   text, 
-  sysprompt = open("py/extract_capability_prompt.txt", "r").read(), 
+  sysprompt = open("prompts/extract_capability_prompt.txt", "r").read(), 
   client=client,
   responseFormat = None,
-  model = "gpt-4o"
+  model = "gpt-4o",
+  seed = None,
+  temperature = None
 ):
+  text = clean_text(text)
+  
+  # Prepare base parameters
+  params = {
+    "model": model,
+    "messages": [
+      {"role": "developer", "content": sysprompt},
+      {"role": "user", "content": text}
+    ]
+  }
+  
+  # Add optional parameters only if they're not None
+  if seed is not None:
+    params["seed"] = seed
+  if temperature is not None:
+    params["temperature"] = temperature
+  
   if responseFormat is None:
-    completion = client.chat.completions.create(
-      model=model,
-      messages=[
-        {"role": "developer", "content": sysprompt},
-        {"role": "user", "content": text}
-      ]
-    )
+    completion = client.chat.completions.create(**params)
     return completion.choices[0].message.content
   else:
-    completion = client.beta.chat.completions.parse(
-      model=model,
-      messages=[
-        {"role": "developer", "content": sysprompt},
-        {"role": "user", "content": text}
-      ],
-      response_format=responseFormat
-    )
+    params["response_format"] = responseFormat
+    completion = client.beta.chat.completions.parse(**params)
     return completion.choices[0].message.parsed
 
 
-def classify_all_releases_llm(
-  scored_releases,
-  sysprompt = open("py/classify_release_prompt.txt", "r").read(),
+def test_gpt_query(
+  file_path,
+  sysprompt_file = "prompts/extract_capability_prompt.txt",
   client=client,
-  file_name = None
+  responseFormat = None,
+  model = "gpt-4o-mini",
+  seed = None,
+  temperature = None
 ):
-  i = 0
-  for release in scored_releases:
-    i += 1
-    print(f"processing release {i} of {len(scored_releases)}")
-    if 'document_type' in release and release['document_type'] != '':
-      print("document type already exists")
-      continue
-    content = release.get('header', '') + " " + release.get('body', '')
-    if content != '':
-      release.update({
-        'document_type': query_gpt(
-          content, 
-          sysprompt=sysprompt, 
-          client=client, 
-          responseFormat=DocumentType,
-          model="gpt-4o-mini"
-        ).document_type # 0.7 sec / document with 4o. $0.0045 per document. 0.00025 per document with 4o-mini
-      })
-    else:
-      release.update({
-        'document_type': 'Other'
-      })
-    if file_name is not None and i % 10 == 0:
-      save_list_to_csv(scored_releases, file_name, append=False)
+  # for manually ensuring output makes sense, e.g
+  # test_gpt_query(
+  # file_path='data/articles/business-technology/unipart-announces-financial-results-for-the-year-ended-31-december-2023-302111405.json',
+  # sysprompt_file = "prompts/classify_release_prompt.txt",
+  # responseFormat=DocumentType,
+  # model="gpt-4o-mini"
+  # )
+  # or 
+  # test_gpt_query(
+  # file_path='data/articles/business-technology/unipart-announces-financial-results-for-the-year-ended-31-december-2023-302111405.json',
+  # sysprompt_file = "prompts/classify_release_extended_prompt.txt",
+  # responseFormat=DocumentTypeWithIntent,
+  # model="gpt-4o-mini"
+  # )
+  # or
+  # test_gpt_query(
+  # file_path='data/articles/business-technology/unipart-announces-financial-results-for-the-year-ended-31-december-2023-302111405.json',
+  # sysprompt_file = "prompts/extract_capability_prompt.txt",
+  # responseFormat=Capabilities,
+  # model="gpt-4o-mini"
+  # )
+  sysprompt = open(sysprompt_file, "r").read()
+  text = read_specific_article(file_path)
+  res = query_gpt(
+    text=text,
+    sysprompt=sysprompt,
+    client=client,
+    responseFormat=responseFormat,
+    model=model,
+    seed=seed,
+    temperature=temperature
+  )
+  return res
+
+
+def count_tokens(texts: list[str], model: str = "gpt-4o") -> int:
+	"""
+	Count the number of tokens in a list of strings using OpenAI's tokenizer.
+	
+	Args:
+		texts: List of strings to count tokens for
+		model: The OpenAI model name to use for tokenization (default: "gpt-4o")
+		
+	Returns:
+		Total token count for all strings in the list
+	"""
+	import tiktoken
+	
+	# Get the appropriate tokenizer for the model
+	try:
+		encoding = tiktoken.encoding_for_model(model)
+	except KeyError:
+		# Fall back to cl100k_base encoding if model not found
+		encoding = tiktoken.get_encoding("cl100k_base")
+	
+	# Count tokens for each string and sum
+	total_tokens = 0
+	for text in texts:
+		total_tokens += len(encoding.encode(text))
+	
+	return total_tokens
 
 
 def extract_capability_strings_for_all_releases(
   scored_releases,
-  sysprompt = open("py/extract_capability_prompt.txt", "r").read(),
+  sysprompt = open("prompts/extract_and_classify_prompt.txt", "r").read(),
   client=client,
   file_name = None
 ):
@@ -192,10 +240,19 @@ def extract_capability_strings_for_all_releases(
       continue
     content = release.get('header', '') + " " + release.get('body', '')
     if content != '':
-      release.update({
-        'capability_string': query_gpt(
-          content, sysprompt=sysprompt, client=client
+      response = query_gpt(
+         content, 
+          sysprompt=sysprompt, 
+          client=client,
+          responseFormat=DocumentTypeWithIntentAndCapabilities,
+          seed=145,
+          temperature=None, # can't use temperature for o3-mini
+          model="o3-mini-2025-01-31"
         )
+      release.update({
+        'document_type': response.document_type,
+        'intent_type': response.intent_type,
+        'capability_string': response.capabilities
       })
     else:
       release.update({
@@ -220,7 +277,11 @@ if __name__ == "__main__":
   )
   parser.add_argument(
     "--input-file", type=str, help="name of file to read press releases from",
-    default="results/relevant_releases.csv"
+    default="results/press_releases/filtered_press_releases.csv"
+  )
+  parser.add_argument(
+    "-score-file", type=str, help="name of file to save results",
+    default="results/press_releases/classified_press_releases.csv"
   )
   parser.add_argument(
     "--file-name", type=str, help="name of file to save results",
@@ -237,50 +298,43 @@ if __name__ == "__main__":
   print(datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
 
   # if no file name is provided, use the default name
-  file_name = args.file_name if args.file_name else "results/processed_press_releases.csv"
+  final_file_name = args.file_name if args.file_name else "results/processed_press_releases.csv"
+  filtered_file_name = args.input_file.replace('.csv', '_scored.csv')
   checkpoint_file = args.llm_checkpoint if args.llm_checkpoint else "checkpoints/llm_checkpoint.csv"
 
   if not args.no_filtering:
     print("Reading press releases")
-    all_releases = read_list_from_csv(args.input_file)
+    all_releases = read_list_from_csv(args.input_file) # 132,590 total, 40,116 unique headers
+    unique_releases = get_unique_releases(all_releases)
+    all_scores = read_list_from_csv(args.score_file)
     processed_releases, rejected_releases = score_press_release_similarity(
-      all_releases,
-      threshold_release = {
-        "adoption" : {
-          "max" : 0.7,
-          "avg" : 0.5,
-          "top_3_avg" : 0.65,
-          "threshold_count" : 0.5,
-          "logsumexp" : 0.5
-        },
-        "launch" : {
-          "max" : 0.7,
-          "avg" : 0.5,
-          "top_3_avg" : 0.65,
-          "threshold_count" : 0.5,
-          "logsumexp" : 0.5
-        }
-      }, 
-      dedup_headers=True
+      unique_releases,
+      all_scores,
+      threshold_release = 0.7, # > 75% of manually classified releases are above 0.7, 66-78% of releases above this threshold are deemed relevant
+      dedup_headers=False # already done above
     )
-    
+    # 14226 approved at threshold 0.5 (80% of all relevant, 66.6% accuracy) (83.0% second stage accuracy, 70% of all relevant)
+    # 12234 approved at threshold 0.6 (75.7% of all relevant, 76.8% accuracy) (88.5% second stage accuracy, 65.7% of all relevant)
+    # 9916 approved at threshold 0.7, (64.2% of all relevant, 80.3% accuracy) (92.5% second stage accuracy, 52.8% of all relevant) 9002912 tokens (~$10 estimated for o3-mini)
+    # XXXX approved at threshold 0.8, (42.8% of all relevant, 88.2% accuracy) (93.1% second stage accuracy, 38.6% of all relevant)
+
     # Save main filtered file
-    save_list_to_csv(processed_releases, file_name)
+    save_list_to_csv(processed_releases, filtered_file_name) 
     
     # Save samples
-    sample_size = min(100, len(processed_releases))
+    sample_size = min(200, len(processed_releases))
     accepted_sample = random.sample(processed_releases, sample_size)
-    save_list_to_csv(accepted_sample, file_name.replace('.csv', '_accepted_sample.csv'))
+    save_list_to_csv(accepted_sample, filtered_file_name.replace('.csv', '_accepted_sample.csv'))
     
-    sample_size = min(100, len(rejected_releases))
+    sample_size = min(200, len(rejected_releases))
     rejected_sample = random.sample(rejected_releases, sample_size)
-    save_list_to_csv(rejected_sample, file_name.replace('.csv', '_rejected_sample.csv'))
+    save_list_to_csv(rejected_sample, filtered_file_name.replace('.csv', '_rejected_sample.csv'))
     
     print(f"Saved {len(processed_releases)} filtered releases")
     print(f"Saved {sample_size} sample accepted releases")
     print(f"Saved {sample_size} sample rejected releases")
   else:
-    processed_releases = read_list_from_csv(file_name)
+    processed_releases = read_list_from_csv(filtered_file_name)
   
   if not args.no_llm:
     print(f"Processing {len(processed_releases)} press releases")
@@ -299,12 +353,12 @@ if __name__ == "__main__":
     
     processed_releases = extract_capability_strings_for_all_releases(
       processed_releases, 
-      sysprompt=open("py/extract_capability_prompt.txt", "r").read(),
+      sysprompt=open("prompts/extract_and_classify_prompt.txt", "r").read(),
       client=client,
       file_name=checkpoint_file
     )
-    save_list_to_csv(processed_releases, file_name) # save final results
+    save_list_to_csv(processed_releases, final_file_name) # save final results
   
   print(datetime.now().strftime("%Y-%m-%d %H:%M:%S"))  
   print("Done")
-  print(f"Results saved to {file_name}")
+  print(f"Results saved to {final_file_name}")
