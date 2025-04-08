@@ -137,7 +137,6 @@ checkpoints/
 .DS_Store
 Thumbs.db
 .Rproj.user
-
 .Rhistory
 
 results/press_releases/relevant_press_releases.csv
@@ -153,3 +152,5 @@ results/press_releases/classified_press_releases_samples.csv
 results/press_releases/filtered_press_releases_scored.csv
 results/press_releases/filtered_press_releases_scored_accepted_sample.csv
 results/press_releases/filtered_press_releases_scored_rejected_sample.csv
+results/press_releases/scored_ai_capabilities.csv
+results/scored_esco_skills/within_skill_similarity.csv
