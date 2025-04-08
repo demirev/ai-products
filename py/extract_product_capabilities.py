@@ -2,8 +2,8 @@ import os
 import json
 import random
 import argparse
-from py.filter_press_release_by_keyword import replace_quotes, read_list_from_csv, save_list_to_csv
-from py.find_relevant_releases_finetune import clean_text
+from filter_press_release_by_keyword import replace_quotes, read_list_from_csv, save_list_to_csv
+from find_relevant_releases_finetune import clean_text
 from datetime import datetime
 from dotenv import load_dotenv
 from pydantic import BaseModel
@@ -252,7 +252,7 @@ def extract_capability_strings_for_all_releases(
       release.update({
         'document_type': response.document_type,
         'intent_type': response.intent_type,
-        'capability_string': response.capabilities
+        'capability_string': str(response.ai_capabilities)
       })
     else:
       release.update({
@@ -285,7 +285,7 @@ if __name__ == "__main__":
   )
   parser.add_argument(
     "--file-name", type=str, help="name of file to save results",
-    default="results/processed_press_releases.csv"
+    default="results/press_releases/processed_press_releases.csv"
   )
   parser.add_argument(
     "--llm-checkpoint", type=str, help="name of file to save checkpoint results",
@@ -298,7 +298,7 @@ if __name__ == "__main__":
   print(datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
 
   # if no file name is provided, use the default name
-  final_file_name = args.file_name if args.file_name else "results/processed_press_releases.csv"
+  final_file_name = args.file_name if args.file_name else "results/press_releases/processed_press_releases.csv"
   filtered_file_name = args.input_file.replace('.csv', '_scored.csv')
   checkpoint_file = args.llm_checkpoint if args.llm_checkpoint else "checkpoints/llm_checkpoint.csv"
 
@@ -344,9 +344,15 @@ if __name__ == "__main__":
     for release in processed_releases:
       if release['header'] in [item['header'] for item in checkpoint_releases]:
         release.update({
+          'document_type': next(
+            item['document_type'] for item in checkpoint_releases if item['header'] == release['header']
+          ),
+          'intent_type': next(
+            item['intent_type'] for item in checkpoint_releases if item['header'] == release['header']
+          ),
           'capability_string': next(
             item['capability_string'] for item in checkpoint_releases if item['header'] == release['header']
-          )
+          ),
         }) # adds previous results if run was interrupted
         found_in_chkp += 1
     print(f"Found {found_in_chkp} releases in checkpoint file")
