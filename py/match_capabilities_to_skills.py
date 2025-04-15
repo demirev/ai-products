@@ -10,8 +10,6 @@ from sentence_transformers import SentenceTransformer
 import pandas as pd
 import json
 
-nlp = spacy.load("en_core_web_lg")
-
 # Initialize BART model and tokenizer
 model_name = "facebook/bart-large"
 sentence_model = "sentence-transformers/all-mpnet-base-v2"
@@ -38,22 +36,36 @@ def get_bart_embeddings(text, max_length=512):
 	return embeddings.squeeze().numpy() # to array
 
 
-def get_mean_text_vector(text, nlp=nlp):
-  return(nlp(text).vector)
-
-
 def get_sentence_embeddings(text, sentence_model=sentence_model):
   return sentence_model.encode(text)
 
 
-def pull_all_capabilities(scored_releases):
+def pull_all_capabilities(scored_releases, intent=None):
 	all_capabilities = []
-	import json
+	if intent is not None:
+		if intent == 'automation':
+			relevant_intents = [
+        'End-toEnd Processing', 
+        'Replacement Messaging', 
+        'Self-Correction Mechanisms',
+        'Volume/Scale Emphasis' 
+      ]
+		elif intent == 'augmentation':
+			relevant_intents = [
+        'Expert Amplification', 
+        'Human-in-the-Loop Design', 
+        'Insight Generation'
+      ]
+		else:
+			raise ValueError(f"Invalid intent: {intent}")
+	else:
+		relevant_intents = None
+
 	for release in scored_releases:
 		capability = release.get('capability_string', '')
 		release_type = release.get('document_type', '')
-		#intent_type = release.get('intent_type', '')
-		if capability != '' and capability != '""' and release_type != 'Not Relevant':
+		intent_type = release.get('intent_type', '')
+		if capability != '' and capability != '""' and release_type != 'Not Relevant' and (relevant_intents is None or intent_type in relevant_intents):
 			# Parse the string as a JSON array
 			try:  
 				capability_list = json.loads(capability.replace("'", '"'))
@@ -119,51 +131,6 @@ def group_skills(skills, skill_hierarchy):
     })
   return skill_groups
 
-
-def calculate_all_similarity_scores(
-  all_capabilities, esco_skills, nlp=nlp, threshold=0.7, embedding_function=get_bart_embeddings
-):
-  # calculate mean vectors
-  capability_list = []
-  i = 0
-  for capability in all_capabilities:
-    i += 1
-    print(f"Gettin mean vector {i} of {len(all_capabilities)}")
-    capability_vector = embedding_function(capability)
-    capability_list.append({
-      'capability': capability,
-      'vector': capability_vector
-    })
-
-  i = 0
-  for skill in esco_skills:
-    i += 1
-    print(f"Gettin mean vector {i} of {len(esco_skills)}")
-    skill_string = skill.get('preferredLabel', '') + " " + skill.get('description', '') + " " + skill.get('altLabels', '')
-    skill_vector = embedding_function(skill_string)
-    skill['vector'] = skill_vector
-
-  # calculate pairwise similarity scores
-  similarity_scores = []
-  i = 0
-  for capability in capability_list:
-    for skill in esco_skills:
-      i+=1
-      print(f"Processing {i} of {len(all_capabilities) * len(esco_skills)}")
-      similarity = torch.nn.functional.cosine_similarity(
-        capability['vector'], skill['vector']
-      ).item()
-
-      similarity_scores.append({
-        'esco_skill_label': skill.get('preferredLabel', ''),
-        'esco_skill_uri': skill.get('conceptUri', ''),
-        'ai_capability': capability.get('capability', ''),
-        'cosine_similarity': similarity
-      })
-
-  return similarity_scores
-
-
 def log_sum_exp(scores, gamma=1.0):
   """
   Compute the log-sum-exp of a list or array of scores with scaling parameter gamma.
@@ -178,64 +145,6 @@ def log_sum_exp(scores, gamma=1.0):
   max_score = np.max(scaled_scores)
   lse = max_score + np.log(np.sum(np.exp(scaled_scores - max_score)))
   return lse / gamma - np.log(len(scores)) / gamma # normalize by number of scores
-
-
-def calculate_all_similarity_scores_batched(
-  all_capabilities, 
-  esco_skills, 
-  threshold=0.7,
-  checkpoint_file="data/scored_esco_skills_checkpoint.csv",
-  capability_vectors = None,
-  embedding_function=get_bart_embeddings
-):
-  # Calculate mean vectors for capabilities
-  if capability_vectors is None:
-    capability_vectors = np.array([embedding_function(capability) for capability in all_capabilities])
-  
-  # Initialize the list for storing similarity scores
-  similarity_scores = []
-
-  # Iterate over each skill
-  for i, skill in enumerate(esco_skills):
-    print(f"Processing skill {i+1} of {len(esco_skills)}")
-    # Calculate the mean vector for the current skill
-    skill_string = skill.get('preferredLabel', '') + " " + skill.get('description', '') #+ " " + skill.get('altLabels', '')
-    skill_vector = embedding_function(skill_string)
-
-    # Calculate cosine similarity between the skill vector and all capability vectors
-    # Here, skill_vector needs to be repeated to match the number of capabilities for batch processing
-    repeated_skill_vector = np.tile(skill_vector, (len(all_capabilities), 1))
-    
-    # Use the batch cosine similarity function
-    cosine_similarities = cosine_similarity_np(capability_vectors, repeated_skill_vector)
-    #all_capabilities = all_capabilities[np.isfinite(cosine_similarities)]
-    #cosine_similarities = cosine_similarities[np.isfinite(cosine_similarities)]
-
-    # Store the results
-    similarity_scores.append({
-      'esco_skill_label': skill.get('preferredLabel', ''),
-      'esco_skill_uri': skill.get('conceptUri', ''),
-      'max_similarity': np.nanmax(cosine_similarities), 
-      'logsumexp_similarity_1': log_sum_exp(cosine_similarities, gamma=1),
-      'logsumexp_similarity_2': log_sum_exp(cosine_similarities, gamma=2),
-      'logsumexp_similarity_5': log_sum_exp(cosine_similarities, gamma=5),
-      'logsumexp_similarity_10': log_sum_exp(cosine_similarities, gamma=10),
-      'n_similar': np.sum(cosine_similarities > threshold),
-      'mean_similarity': np.nanmean(cosine_similarities),
-      'max_similarity_capability': all_capabilities[np.nanargmax(cosine_similarities)]
-    })
-    for j, capability in enumerate(all_capabilities):
-      this_score = {
-        'esco_skill_label': skill.get('preferredLabel', ''),
-        'esco_skill_uri': skill.get('conceptUri', ''),
-        'ai_capability': capability,
-        'cosine_similarity': cosine_similarities[j]
-      }
-      # append to checkpoint file
-      if checkpoint_file is not None:
-        save_list_to_csv([this_score], checkpoint_file, append=True)
-
-  return similarity_scores
 
 
 if __name__ == "__main__":
@@ -257,13 +166,24 @@ if __name__ == "__main__":
     default="results/scored_esco_skills/scored_esco_skills.csv"
   )
   parser.add_argument(
-    "--checkpoint-file", type=str, help="Path to the checkpoint file",
-    default="checkpoints/scored_esco_skills_checkpoint.csv"
-  )
-  parser.add_argument(
-    "--no-similarity", action="store_true", help="Do not calculate similarity scores",
+    "--no-embedding", 
+    action="store_true", 
+    help="Do not calculate capability and skill embeddings",
     default=False
   )
+  parser.add_argument(
+    "--no-within-skill-similarity", 
+    action="store_true", 
+    help="Do not calculate within-skill similarity",
+    default=False
+  )
+  parser.add_argument(
+    "--no-capability-skill-similarity", 
+    action="store_true", 
+    help="Do not calculate capability-skill similarity",
+    default=False
+  )
+
   args = parser.parse_args()
 
   print("Starting")
@@ -274,7 +194,6 @@ if __name__ == "__main__":
   esco_skills_file = args.skills_input_file
   capability_vector_file = "checkpoints/capability_vectors.csv"
   skill_vector_file = "checkpoints/skill_vectors.csv"
-  capability_skill_similarity_file = args.capability_skill_similarity_file
   within_skill_similarity_file = "results/scored_esco_skills/within_skill_similarity.csv"
   skill_hierarchy_file = "data/esco/broaderRelationsSkillPillar_en.csv"
   skills_output_file = args.skills_output_file
@@ -285,12 +204,38 @@ if __name__ == "__main__":
 
   # filter only relevant esco_skills
   esco_skills = [skill for skill in esco_skills if skill.get('status', '') == 'released' and skill.get('skillType', '') == 'skill/competence']
-  len([sr for sr in scored_releases if sr["document_type"] != "Not Relevant" and sr["capability_string"] != "[]"])
+  
+  # tabulate releases by intent
+  print(f"Total releases: {len([sr for sr in scored_releases if sr['document_type'] != 'Not Relevant' and sr['capability_string'] != '[]'])}")
   # 8257
+  automation_intents = [
+    "End-to-End Processing", 
+    "Replacement Messaging", 
+    "Self-Correction Mechanisms",
+    "Volume/Scale Emphasis"
+  ]
+  automation_releases = [sr for sr in scored_releases if sr["document_type"] != "Not Relevant" and sr["intent_type"] in automation_intents]
+  print(f"Automation releases: {len(automation_releases)}") 
+  # 3975
+  augmentation_intents = [
+    "Expert Amplification", 
+    "Human-in-the-Loop Design", 
+    "Insight Generation"
+  ]
+  augmentation_releases = [sr for sr in scored_releases if sr["document_type"] != "Not Relevant" and sr["intent_type"] in augmentation_intents]
+  print(f"Augmentation releases: {len(augmentation_releases)}") 
+  # 3673
 
   # only populated capabilities
   all_capabilities = pull_all_capabilities(scored_releases)
-  len(all_capabilities) # 27414
+  print(f"Total capabilities: {len(all_capabilities)}")
+  # 27414
+  automation_capabilities = pull_all_capabilities(scored_releases, intent='automation')
+  print(f"Automation capabilities: {len(automation_capabilities)}")
+  # 5790
+  augmentation_capabilities = pull_all_capabilities(scored_releases, intent='augmentation')
+  print(f"Augmentation capabilities: {len(augmentation_capabilities)}")
+  # 11843
 
   if not args.no_embedding:
     # embed capabilities
@@ -402,6 +347,10 @@ if __name__ == "__main__":
     if not within_skill_similarity:
       raise ValueError("Within-skill similarity not found")
 
+    # Find indices of automation and augmentation capabilities in all_capabilities
+    automation_indices = [i for i, cap in enumerate(all_capabilities) if cap in automation_capabilities]
+    augmentation_indices = [i for i, cap in enumerate(all_capabilities) if cap in augmentation_capabilities]
+    
     # calculate summary scores
     summary_scores = []
     i = 0
@@ -427,22 +376,46 @@ if __name__ == "__main__":
         capability_vectors
       )
       
+      # Create subset arrays using the indices
+      cosine_similarities_automation = cosine_similarities[automation_indices] if automation_indices else np.array([])
+      cosine_similarities_augmentation = cosine_similarities[augmentation_indices] if augmentation_indices else np.array([])
+      
       summary_scores.append({
         'esco_skill_label': skill.get('preferredLabel', ''),
         'esco_skill_uri': skill.get('conceptUri', ''),
         'max_similarity': np.nanmax(cosine_similarities), 
+        'max_similarity_automation_intent': np.nanmax(cosine_similarities_automation) if len(cosine_similarities_automation) > 0 else None,
+        'max_similarity_augmentation_intent': np.nanmax(cosine_similarities_augmentation) if len(cosine_similarities_augmentation) > 0 else None,
         'top5_similarity': np.nanmean(np.sort(cosine_similarities)[-5:]),
         'logsumexp_similarity_5': log_sum_exp(cosine_similarities, gamma=5),
         'logsumexp_similarity_10': log_sum_exp(cosine_similarities, gamma=10),
         'logsumexp_similarity_100': log_sum_exp(cosine_similarities, gamma=100),
         'n_similar_l3': [np.sum(cosine_similarities >= cut_off_values['level_3']) if not no_skill_group else None][0],
+        'n_similar_l3_automation_intent': [np.sum(cosine_similarities_automation >= cut_off_values['level_3']) if not no_skill_group else None][0],
+        'n_similar_l3_augmentation_intent': [np.sum(cosine_similarities_augmentation >= cut_off_values['level_3']) if not no_skill_group else None][0],
         'n_similar_l2': [np.sum(cosine_similarities >= cut_off_values['level_2']) if not no_skill_group else None][0],
+        'n_similar_l2_automation_intent': [np.sum(cosine_similarities_automation >= cut_off_values['level_2']) if not no_skill_group else None][0],
+        'n_similar_l2_augmentation_intent': [np.sum(cosine_similarities_augmentation >= cut_off_values['level_2']) if not no_skill_group else None][0],
         'n_similar_l1': [np.sum(cosine_similarities >= cut_off_values['level_1']) if not no_skill_group else None][0],
+        'n_similar_l1_automation_intent': [np.sum(cosine_similarities_automation >= cut_off_values['level_1']) if not no_skill_group else None][0],
+        'n_similar_l1_augmentation_intent': [np.sum(cosine_similarities_augmentation >= cut_off_values['level_1']) if not no_skill_group else None][0],
         'mean_similarity': np.nanmean(cosine_similarities),
-        'max_similarity_capability': all_capabilities[np.nanargmax(cosine_similarities)]
+        # 'mean_similarity_automation_intent': np.nanmean(cosine_similarities_automation) if len(cosine_similarities_automation) > 0 else None,
+        # 'mean_similarity_augmentation_intent': np.nanmean(cosine_similarities_augmentation) if len(cosine_similarities_augmentation) > 0 else None,
+        'max_similarity_capability': all_capabilities[np.nanargmax(cosine_similarities)],
+        'max_similarity_capability_automation_intent': all_capabilities[np.nanargmax(cosine_similarities_automation)] if len(cosine_similarities_automation) > 0 else None,
+        'max_similarity_capability_augmentation_intent': all_capabilities[np.nanargmax(cosine_similarities_augmentation)] if len(cosine_similarities_augmentation) > 0 else None,
       })
 
     # save results
-    save_list_to_csv(summary_scores, skills_output_file, append=False)
+    print(f"Total summary scores: {len(summary_scores)}") # 10831
+    print(f"Total summary scores with n_similar_l3 != 0: {len([ss for ss in summary_scores if ss['n_similar_l3'] != 0])}") # 3058
+    print(f"Total summary scores with n_similar_l3_automation_intent != 0: {len([ss for ss in summary_scores if ss['n_similar_l3_automation_intent'] != 0])}") # 1916
+    print(f"Total summary scores with n_similar_l3_augmentation_intent != 0: {len([ss for ss in summary_scores if ss['n_similar_l3_augmentation_intent'] != 0])}") # 2500
+    print(f"Total summary scores with n_similar_l2 != 0: {len([ss for ss in summary_scores if ss['n_similar_l2'] != 0])}") # 4337
+    print(f"Total summary scores with n_similar_l2_automation_intent != 0: {len([ss for ss in summary_scores if ss['n_similar_l2_automation_intent'] != 0])}") # 2818
+    print(f"Total summary scores with n_similar_l2_augmentation_intent != 0: {len([ss for ss in summary_scores if ss['n_similar_l2_augmentation_intent'] != 0])}") # 3605
     
+    save_list_to_csv(summary_scores, skills_output_file, append=False)
+    print(f"Saved final results to {skills_output_file}")
   
