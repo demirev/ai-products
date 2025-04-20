@@ -50,6 +50,8 @@ scored_occupations_2digit <- scored_occupations %>%
   group_by(isco_code) %>%
   summarise(
     ai_product_exposure_score = mean(ai_product_exposure_score, na.rm = T),
+    ai_product_augmentation_score = mean(ai_product_augmentation_score, na.rm = T),
+    ai_product_automation_score = mean(ai_product_automation_score, na.rm = T),
     felten_exposure_score = mean(felten_exposure_score, na.rm = T),
     webb_exposure_score = mean(webb_exposure_score, na.rm = T),
     eloundou_exposure_score = mean(beta_eloundou, na.rm = T),
@@ -143,6 +145,26 @@ vs_wage_plot <- scored_occupations_2digit %>%
   theme_minimal() +
   theme(text = element_text(family = "merriweather"))
 
+vs_wage_plot_automation <- scored_occupations_2digit %>%
+  ggplot(aes(x = mean_wage_coefficient, y = ai_product_automation_score)) +
+  geom_point() +
+  geom_smooth(method = "lm") +
+  xlab("Mean wage coefficient") +
+  ylab("AI product automation score") +
+  ggtitle("AI product automation score vs. wage premium") +
+  theme_minimal() +
+  theme(text = element_text(family = "merriweather"))
+
+vs_wage_plot_augmentation <- scored_occupations_2digit %>%
+  ggplot(aes(x = mean_wage_coefficient, y = ai_product_augmentation_score)) +
+  geom_point() +
+  geom_smooth(method = "lm") +
+  xlab("Mean wage coefficient") +
+  ylab("AI product augmentation score") +
+  ggtitle("AI product augmentation score vs. wage premium") +
+  theme_minimal() +
+  theme(text = element_text(family = "merriweather"))
+
 vs_wage_plot_cubic_trend <- scored_occupations_2digit %>%
   ggplot(aes(x = mean_wage_coefficient, y = ai_product_exposure_score)) +
   geom_point() +
@@ -214,6 +236,26 @@ vs_unemployment_plot <- scored_occupations_2digit %>%
   theme_minimal() +
   theme(text = element_text(family = "merriweather"))
 
+vs_unemployment_plot_automation <- scored_occupations_2digit %>%
+  ggplot(aes(x = percent_unemployed, y = ai_product_automation_score)) +
+  geom_point() +
+  geom_smooth(method = "lm") +
+  xlab("% Unemployed in Occupation") +
+  ylab("AI product automation score") +
+  ggtitle("AI product automation score vs. unemployment rate") +
+  theme_minimal() +
+  theme(text = element_text(family = "merriweather"))
+
+vs_unemployment_plot_augmentation <- scored_occupations_2digit %>%
+  ggplot(aes(x = percent_unemployed, y = ai_product_augmentation_score)) +
+  geom_point() +
+  geom_smooth(method = "lm") +
+  xlab("% Unemployed in Occupation") +
+  ylab("AI product augmentation score") +
+  ggtitle("AI product augmentation score vs. unemployment rate") +
+  theme_minimal() +
+  theme(text = element_text(family = "merriweather"))
+
 vs_unemployment_plot_cubic_trend <- scored_occupations_2digit %>%
   ggplot(aes(x = percent_unemployed, y = ai_product_exposure_score)) +
   geom_point() +
@@ -276,6 +318,14 @@ list(
 list(
   r_product_exposure_unemployment = cor.test(
     scored_occupations_2digit$ai_product_exposure_score, 
+    scored_occupations_2digit$percent_unemployed
+  ),
+  r_product_automation_unemployment = cor.test(
+    scored_occupations_2digit$ai_product_automation_score, 
+    scored_occupations_2digit$percent_unemployed
+  ),
+  r_product_augmentation_unemployment = cor.test(
+    scored_occupations_2digit$ai_product_augmentation_score, 
     scored_occupations_2digit$percent_unemployed
   ),
   r_felten_unemployment = cor.test(

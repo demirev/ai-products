@@ -247,6 +247,7 @@ if __name__ == "__main__":
       'vector': [json.dumps(vector.tolist()) for vector in capability_vectors]
     })
     capability_df.to_csv(capability_vector_file, index=False)
+    print(f"Saved capability vectors to {capability_vector_file}")
     
     # embed skills
     skill_vectors = np.array([get_sentence_embeddings(skill.get('preferredLabel', '') + " " + skill.get('description', '')) for skill in esco_skills])
@@ -257,7 +258,8 @@ if __name__ == "__main__":
       'vector': [json.dumps(vector.tolist()) for vector in skill_vectors]
     })
     skill_df.to_csv(skill_vector_file, index=False)
-
+    print(f"Saved skill vectors to {skill_vector_file}")
+  
   # Read capability vectors using pandas
   capability_df = pd.read_csv(capability_vector_file)
   if not capability_df.empty:
@@ -353,20 +355,30 @@ if __name__ == "__main__":
     
     # calculate summary scores
     summary_scores = []
+    
+    overall_cut_off_values = {
+      'level_3': np.nanmean([float(ws['group_level_3_excl_max']) for ws in within_skill_similarity]),
+      'level_2': np.nanmean([float(ws['group_level_2_excl_max']) for ws in within_skill_similarity]),
+      'level_1': np.nanmean([float(ws['group_level_1_excl_max']) for ws in within_skill_similarity]),
+    }
+    print(f"Overall cut-off values: {overall_cut_off_values}") # {'level_3': 0.6419223837660718, 'level_2': 0.5994165161048206, 'level_1': 0.6198785284251925}
+
     i = 0
     for idx, skill in enumerate(esco_skills):
       # get cut-off values for skill groups
-      this_skill_group = [ws for ws in within_skill_similarity if ws['skill_uri'] == skill['conceptUri']]
-      if len(this_skill_group) == 0:
-        no_skill_group = True
-        cut_off_values = {}
-      else:
-        no_skill_group = False
-        cut_off_values = {
-          'level_3': float(this_skill_group[0]['group_level_3_excl_max']),
-          'level_2': float(this_skill_group[0]['group_level_2_excl_max']),
-          'level_1': float(this_skill_group[0]['group_level_1_excl_max']),
-        }
+      # this_skill_group = [ws for ws in within_skill_similarity if ws['skill_uri'] == skill['conceptUri']]
+      # if len(this_skill_group) == 0:
+      #   no_skill_group = True
+      #   cut_off_values = overall_cut_off_values
+      # else:
+      #   no_skill_group = False
+      #   cut_off_values = {
+      #     'level_3': np.nanmax([float(this_skill_group[0]['group_level_3_excl_max']), overall_cut_off_values['level_3']]), # but no lower than overall cut-off
+      #     'level_2': np.nanmax([float(this_skill_group[0]['group_level_2_excl_max']), overall_cut_off_values['level_2']]),
+      #     'level_1': np.nanmax([float(this_skill_group[0]['group_level_1_excl_max']), overall_cut_off_values['level_1']]),
+      #   }
+      no_skill_group = False
+      cut_off_values = overall_cut_off_values
 
       i += 1
       print(f"Processing skill {i} of {len(esco_skills)}")
@@ -393,6 +405,9 @@ if __name__ == "__main__":
         'n_similar_l3': [np.sum(cosine_similarities >= cut_off_values['level_3']) if not no_skill_group else None][0],
         'n_similar_l3_automation_intent': [np.sum(cosine_similarities_automation >= cut_off_values['level_3']) if not no_skill_group else None][0],
         'n_similar_l3_augmentation_intent': [np.sum(cosine_similarities_augmentation >= cut_off_values['level_3']) if not no_skill_group else None][0],
+        'mean_similarity_l3': [np.nanmean(cosine_similarities[cosine_similarities >= cut_off_values['level_3']]) if not no_skill_group else None][0],
+        'mean_similarity_l3_automation_intent': [np.nanmean(cosine_similarities_automation[cosine_similarities_automation >= cut_off_values['level_3']]) if not no_skill_group else None][0],
+        'mean_similarity_l3_augmentation_intent': [np.nanmean(cosine_similarities_augmentation[cosine_similarities_augmentation >= cut_off_values['level_3']]) if not no_skill_group else None][0],
         'n_similar_l2': [np.sum(cosine_similarities >= cut_off_values['level_2']) if not no_skill_group else None][0],
         'n_similar_l2_automation_intent': [np.sum(cosine_similarities_automation >= cut_off_values['level_2']) if not no_skill_group else None][0],
         'n_similar_l2_augmentation_intent': [np.sum(cosine_similarities_augmentation >= cut_off_values['level_2']) if not no_skill_group else None][0],
@@ -409,12 +424,12 @@ if __name__ == "__main__":
 
     # save results
     print(f"Total summary scores: {len(summary_scores)}") # 10831
-    print(f"Total summary scores with n_similar_l3 != 0: {len([ss for ss in summary_scores if ss['n_similar_l3'] != 0])}") # 3058
-    print(f"Total summary scores with n_similar_l3_automation_intent != 0: {len([ss for ss in summary_scores if ss['n_similar_l3_automation_intent'] != 0])}") # 1916
-    print(f"Total summary scores with n_similar_l3_augmentation_intent != 0: {len([ss for ss in summary_scores if ss['n_similar_l3_augmentation_intent'] != 0])}") # 2500
-    print(f"Total summary scores with n_similar_l2 != 0: {len([ss for ss in summary_scores if ss['n_similar_l2'] != 0])}") # 4337
-    print(f"Total summary scores with n_similar_l2_automation_intent != 0: {len([ss for ss in summary_scores if ss['n_similar_l2_automation_intent'] != 0])}") # 2818
-    print(f"Total summary scores with n_similar_l2_augmentation_intent != 0: {len([ss for ss in summary_scores if ss['n_similar_l2_augmentation_intent'] != 0])}") # 3605
+    print(f"Total summary scores with n_similar_l3 != 0: {len([ss for ss in summary_scores if ss['n_similar_l3'] != 0])}") # 1709
+    print(f"Total summary scores with n_similar_l3_automation_intent != 0: {len([ss for ss in summary_scores if ss['n_similar_l3_automation_intent'] != 0])}") # 615
+    print(f"Total summary scores with n_similar_l3_augmentation_intent != 0: {len([ss for ss in summary_scores if ss['n_similar_l3_augmentation_intent'] != 0])}") # 1095
+    print(f"Total summary scores with n_similar_l2 != 0: {len([ss for ss in summary_scores if ss['n_similar_l2'] != 0])}") # 3224
+    print(f"Total summary scores with n_similar_l2_automation_intent != 0: {len([ss for ss in summary_scores if ss['n_similar_l2_automation_intent'] != 0])}") # 1358
+    print(f"Total summary scores with n_similar_l2_augmentation_intent != 0: {len([ss for ss in summary_scores if ss['n_similar_l2_augmentation_intent'] != 0])}") # 2254
     
     save_list_to_csv(summary_scores, skills_output_file, append=False)
     print(f"Saved final results to {skills_output_file}")

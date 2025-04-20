@@ -702,7 +702,7 @@ correlations <- scored_occupations_matched %>%
     beta_eloundou
   ) %>%
   as.matrix() %>%
-  Hmisc::rcorr() %>%
+  Hmisc::rcorr(type = "spearman") %>%
   (function(x) {
     tibble(
       var1 = rep(colnames(x$r), each = ncol(x$r)),
@@ -723,7 +723,7 @@ correlations_grouped <- scored_groups_matched %>%
     beta_eloundou
   ) %>%
   as.matrix() %>%
-  Hmisc::rcorr() %>%
+  Hmisc::rcorr(type = "spearman") %>%
   (function(x) {
     tibble(
       var1 = rep(colnames(x$r), each = ncol(x$r)),
@@ -784,7 +784,7 @@ list(
   high_felten_low_product_exposure_groups = scored_groups_matched %>%
     filter(
       felten_exposure_score > 0,
-      ai_product_exposure_score < 0
+      ai_product_exposure_score < 0.25 # mean is 0.247
     ) %>%
     select(
       isco_3digit,
@@ -796,7 +796,7 @@ list(
   low_felten_high_product_exposure_groups = scored_groups_matched %>%
     filter(
       felten_exposure_score < 0,
-      ai_product_exposure_score > 0
+      ai_product_exposure_score > 0.25
     ) %>%
     select(
       isco_3digit,
@@ -809,7 +809,7 @@ list(
   high_felten_low_product_exposure = scored_occupations_matched %>%
     filter(
       felten_exposure_score > 0,
-      ai_product_exposure_score < 0
+      ai_product_exposure_score < 0.25
     ) %>%
     select(
       occupation_title,
@@ -821,7 +821,7 @@ list(
   low_felten_high_product_exposure = scored_occupations_matched %>%
     filter(
       felten_exposure_score < 0,
-      ai_product_exposure_score > 0
+      ai_product_exposure_score > 0.25
     ) %>%
     select(
       occupation_title,
@@ -847,7 +847,7 @@ vs_eloundou_plot <- scored_occupations_matched %>%
   ) +
   # add gray dashed lines at x = 0 and y = 0
   geom_vline(xintercept = 0.5, linetype = "dashed", color = "gray") +
-  geom_hline(yintercept = 0, linetype = "dashed", color = "gray") +
+  geom_hline(yintercept = 0.25, linetype = "dashed", color = "gray") +
   theme_minimal() +
   theme(text = element_text(family = "merriweather"))
 
@@ -866,7 +866,7 @@ vs_eloundou_plot_grouped <- scored_groups_matched %>%
   ) +
   # add gray dashed lines at x = 0 and y = 0
   geom_vline(xintercept = 0.5, linetype = "dashed", color = "gray") +
-  geom_hline(yintercept = 0, linetype = "dashed", color = "gray") +
+  geom_hline(yintercept = 0.25, linetype = "dashed", color = "gray") +
   theme_minimal() +
   theme(text = element_text(family = "merriweather"))
 
@@ -876,7 +876,7 @@ list(
   high_eloundou_low_product_exposure_groups = scored_groups_matched %>%
     filter(
       beta_eloundou > 0.5,
-      ai_product_exposure_score < 0
+      ai_product_exposure_score < 0.25
     ) %>%
     select(
       isco_3digit,
@@ -888,7 +888,7 @@ list(
   low_eloundou_high_product_exposure_groups = scored_groups_matched %>%
     filter(
       beta_eloundou < 0.5,
-      ai_product_exposure_score > 0
+      ai_product_exposure_score > 0.25
     ) %>%
     select(
       isco_3digit,
@@ -901,7 +901,7 @@ list(
   high_eloundou_low_product_exposure = scored_occupations_matched %>%
     filter(
       beta_eloundou > 0.5,
-      ai_product_exposure_score < 0
+      ai_product_exposure_score < 0.25
     ) %>%
     select(
       occupation_title,
@@ -913,7 +913,7 @@ list(
   low_eloundou_high_product_exposure = scored_occupations_matched %>%
     filter(
       beta_eloundou < 0.5,
-      ai_product_exposure_score > 0
+      ai_product_exposure_score > 0.25
     ) %>%
     select(
       occupation_title,
