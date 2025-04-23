@@ -1,9 +1,9 @@
-skill_group_level_1,n_skills,ave_max_similarity_standardized
-working with computers,304,0.6419459487536942
-information skills,1962,0.43580876868527785
-management skills,1332,0.28718943092910554
-"communication, collaboration and creativity",2342,0.20675636203379708
-assisting and caring,1021,0.0583818755766701
-working with machinery and specialised equipment,1297,-0.5090540026918823
-constructing,484,-0.5129543742985325
-handling and moving,1473,-0.6997600597406594
+skill_group_level_1,n_skills,ave_n_similar_l3
+working with computers,304,1.4967105263157894
+information skills,1962,1.0132517838939856
+"communication, collaboration and creativity",2342,0.6362083689154568
+management skills,1332,0.6036036036036037
+assisting and caring,1021,0.3516160626836435
+constructing,484,0.19834710743801653
+working with machinery and specialised equipment,1297,0.1117964533538936
+handling and moving,1473,0.06449422946367957

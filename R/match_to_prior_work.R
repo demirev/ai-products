@@ -737,6 +737,10 @@ correlations_grouped <- scored_groups_matched %>%
   filter(!duplicated(r))
 
 # plots -------------------------------------------------------------------
+ai_product_exposure_mean = mean(
+  scored_occupations_matched$ai_product_exposure_score, na.rm = TRUE
+) # 0.115821
+
 # ggplot of ai_product_exposure_score vs felten_exposure_score
 vs_felten_plot <- scored_occupations_matched %>%
   ggplot(aes(
@@ -754,7 +758,7 @@ vs_felten_plot <- scored_occupations_matched %>%
   ) +
   # add gray dashed lines at x = 0 and y = 0
   geom_vline(xintercept = 0, linetype = "dashed", color = "gray") +
-  geom_hline(yintercept = 0, linetype = "dashed", color = "gray") +
+  geom_hline(yintercept = ai_product_exposure_mean, linetype = "dashed", color = "gray") +
   theme_minimal() +
   theme(text = element_text(family = "merriweather"))
 
@@ -774,7 +778,7 @@ vs_felten_plot_grouped <- scored_groups_matched %>%
   ) +
   # add gray dashed lines at x = 0 and y = 0
   geom_vline(xintercept = 0, linetype = "dashed", color = "gray") +
-  geom_hline(yintercept = 0, linetype = "dashed", color = "gray") +
+  geom_hline(yintercept = ai_product_exposure_mean, linetype = "dashed", color = "gray") +
   theme_minimal() +
   theme(text = element_text(family = "merriweather"))
 
@@ -784,7 +788,7 @@ list(
   high_felten_low_product_exposure_groups = scored_groups_matched %>%
     filter(
       felten_exposure_score > 0,
-      ai_product_exposure_score < 0.25 # mean is 0.247
+      ai_product_exposure_score < ai_product_exposure_mean
     ) %>%
     select(
       isco_3digit,
@@ -796,7 +800,7 @@ list(
   low_felten_high_product_exposure_groups = scored_groups_matched %>%
     filter(
       felten_exposure_score < 0,
-      ai_product_exposure_score > 0.25
+      ai_product_exposure_score > ai_product_exposure_mean
     ) %>%
     select(
       isco_3digit,
@@ -809,7 +813,7 @@ list(
   high_felten_low_product_exposure = scored_occupations_matched %>%
     filter(
       felten_exposure_score > 0,
-      ai_product_exposure_score < 0.25
+      ai_product_exposure_score < ai_product_exposure_mean
     ) %>%
     select(
       occupation_title,
@@ -821,7 +825,7 @@ list(
   low_felten_high_product_exposure = scored_occupations_matched %>%
     filter(
       felten_exposure_score < 0,
-      ai_product_exposure_score > 0.25
+      ai_product_exposure_score > ai_product_exposure_mean
     ) %>%
     select(
       occupation_title,
@@ -847,7 +851,7 @@ vs_eloundou_plot <- scored_occupations_matched %>%
   ) +
   # add gray dashed lines at x = 0 and y = 0
   geom_vline(xintercept = 0.5, linetype = "dashed", color = "gray") +
-  geom_hline(yintercept = 0.25, linetype = "dashed", color = "gray") +
+  geom_hline(yintercept = ai_product_exposure_mean, linetype = "dashed", color = "gray") +
   theme_minimal() +
   theme(text = element_text(family = "merriweather"))
 
@@ -866,7 +870,7 @@ vs_eloundou_plot_grouped <- scored_groups_matched %>%
   ) +
   # add gray dashed lines at x = 0 and y = 0
   geom_vline(xintercept = 0.5, linetype = "dashed", color = "gray") +
-  geom_hline(yintercept = 0.25, linetype = "dashed", color = "gray") +
+  geom_hline(yintercept = ai_product_exposure_mean, linetype = "dashed", color = "gray") +
   theme_minimal() +
   theme(text = element_text(family = "merriweather"))
 
@@ -876,7 +880,7 @@ list(
   high_eloundou_low_product_exposure_groups = scored_groups_matched %>%
     filter(
       beta_eloundou > 0.5,
-      ai_product_exposure_score < 0.25
+      ai_product_exposure_score < ai_product_exposure_mean
     ) %>%
     select(
       isco_3digit,
@@ -888,7 +892,7 @@ list(
   low_eloundou_high_product_exposure_groups = scored_groups_matched %>%
     filter(
       beta_eloundou < 0.5,
-      ai_product_exposure_score > 0.25
+      ai_product_exposure_score > ai_product_exposure_mean
     ) %>%
     select(
       isco_3digit,
@@ -901,7 +905,7 @@ list(
   high_eloundou_low_product_exposure = scored_occupations_matched %>%
     filter(
       beta_eloundou > 0.5,
-      ai_product_exposure_score < 0.25
+      ai_product_exposure_score < ai_product_exposure_mean
     ) %>%
     select(
       occupation_title,
@@ -913,7 +917,7 @@ list(
   low_eloundou_high_product_exposure = scored_occupations_matched %>%
     filter(
       beta_eloundou < 0.5,
-      ai_product_exposure_score > 0.25
+      ai_product_exposure_score > ai_product_exposure_mean
     ) %>%
     select(
       occupation_title,
@@ -939,7 +943,7 @@ vs_webb_plot <- scored_occupations_matched %>%
   ) +
   # add gray dashed lines at x = 0 and y = 0
   geom_vline(xintercept = 50, linetype = "dashed", color = "gray") +
-  geom_hline(yintercept = 0, linetype = "dashed", color = "gray") +
+  geom_hline(yintercept = ai_product_exposure_mean, linetype = "dashed", color = "gray") +
   theme_minimal() +
   theme(text = element_text(family = "merriweather"))
 
@@ -958,7 +962,7 @@ vs_webb_plot_grouped <- scored_groups_matched %>%
   ) +
   # add gray dashed lines at x = 0 and y = 0
   geom_vline(xintercept = 50, linetype = "dashed", color = "gray") +
-  geom_hline(yintercept = 0, linetype = "dashed", color = "gray") +
+  geom_hline(yintercept = ai_product_exposure_mean, linetype = "dashed", color = "gray") +
   theme_minimal() +
   theme(text = element_text(family = "merriweather"))
 
@@ -968,7 +972,7 @@ list(
   high_webb_low_product_exposure_groups = scored_groups_matched %>%
     filter(
       webb_exposure_score > 50,
-      ai_product_exposure_score < 0
+      ai_product_exposure_score < ai_product_exposure_mean
     ) %>%
     select(
       isco_3digit,
@@ -979,8 +983,8 @@ list(
     arrange(desc(webb_exposure_score)),
   low_webb_high_product_exposure_groups = scored_groups_matched %>%
     filter(
-      webb_exposure_score < 0,
-      ai_product_exposure_score > 0
+      webb_exposure_score < 50,
+      ai_product_exposure_score > ai_product_exposure_mean
     ) %>%
     select(
       isco_3digit,
@@ -993,7 +997,7 @@ list(
   high_webb_low_product_exposure = scored_occupations_matched %>%
     filter(
       webb_exposure_score > 50,
-      ai_product_exposure_score < 0
+      ai_product_exposure_score < ai_product_exposure_mean
     ) %>%
     select(
       occupation_title,
@@ -1005,7 +1009,7 @@ list(
   low_webb_high_product_exposure = scored_occupations_matched %>%
     filter(
       webb_exposure_score < 50,
-      ai_product_exposure_score > 0
+      ai_product_exposure_score > ai_product_exposure_mean
     ) %>%
     select(
       occupation_title,

@@ -114,6 +114,8 @@ aggregate_score_to_occupation_level <- function(
       n_similar = n_similar_l3,
       n_similar_augmentation = n_similar_l3_augmentation_intent,
       n_similar_automation = n_similar_l3_automation_intent,
+      n_similar_company = n_similar_l3_company_source,
+      n_similar_report = n_similar_l3_report_source,
       mean_similar = mean_similarity_l3,
       mean_similar_augmentation = mean_similarity_l3_augmentation_intent,
       mean_similar_automation = mean_similarity_l3_automation_intent,
@@ -150,6 +152,12 @@ aggregate_score_to_occupation_level <- function(
       ),
       exposure_score_p_similar_automation = mean(
         n_similar_automation > discrete_cutoff
+      ),
+      exposure_score_p_similar_company = mean(
+        n_similar_company > discrete_cutoff
+      ),
+      exposure_score_p_similar_report = mean(
+        n_similar_report > discrete_cutoff
       ),
       exposure_score_mean_similar_weighted = weighted.mean(
         ifelse(is.nan(mean_similar), 0, mean_similar),
@@ -410,29 +418,18 @@ scored_skill_groups <- aggregate_skills_to_groups(
 )
 
 # aggregate occupation scores ---------------------------------------------
+scored_skills$n_similar_l3 %>% quantile(seq(0,1,0.01)) # 97% have < 3, 84% < 0
+
+chosen_cutoff = 2 # at least n+1 required
+
 scored_occupations <- aggregate_score_to_occupation_level(
   scored_skills,
   esco_occupation_skill_mapping,
   esco_occupations,
   final_measure = "exposure_score_p_similar",
   remove_extra = T,
-  standardize = F, discrete_cutoff = 0
+  standardize = F, discrete_cutoff = chosen_cutoff
 ) %>%
-  left_join(
-    aggregate_score_to_occupation_level(
-      scored_skills,
-      esco_occupation_skill_mapping,
-      esco_occupations,
-      final_measure = "exposure_score_n_similar",
-      remove_extra = T,
-      standardize = T, discrete_cutoff = 0
-    ) %>%
-      select(
-        occupation_uri,
-        ai_product_count_score = ai_product_exposure_score
-      ),
-    by = "occupation_uri"
-  ) %>%
   left_join(
     aggregate_score_to_occupation_level(
       scored_skills,
@@ -440,7 +437,7 @@ scored_occupations <- aggregate_score_to_occupation_level(
       esco_occupations,
       final_measure = "exposure_score_p_similar_augmentation",
       remove_extra = T,
-      standardize = F, discrete_cutoff = 0
+      standardize = F, discrete_cutoff = chosen_cutoff
     ) %>%
       select(
         occupation_uri,
@@ -455,7 +452,7 @@ scored_occupations <- aggregate_score_to_occupation_level(
       esco_occupations,
       final_measure = "exposure_score_p_similar_automation",
       remove_extra = T,
-      standardize = F, discrete_cutoff = 0
+      standardize = F, discrete_cutoff = chosen_cutoff
     ) %>%
       select(
         occupation_uri,
@@ -464,7 +461,27 @@ scored_occupations <- aggregate_score_to_occupation_level(
     by = "occupation_uri"
   )
 
-scored_occupations %>%
+
+# examine using count above threshold -------------------------------------
+alt_count_scores <- scored_occupations %>%
+  left_join(
+    aggregate_score_to_occupation_level(
+      scored_skills,
+      esco_occupation_skill_mapping,
+      esco_occupations,
+      final_measure = "exposure_score_n_similar",
+      remove_extra = T,
+      standardize = T, discrete_cutoff = 0
+    ) %>%
+      select(
+        occupation_uri,
+        ai_product_count_score = ai_product_exposure_score,
+        ai_product_count_percentile = ai_product_exposure_percentile
+      ),
+    by = "occupation_uri"
+  )
+
+alt_count_scores %>%
   ggplot(aes(
     x = ai_product_count_score,
     y = ai_product_exposure_score
@@ -473,11 +490,229 @@ scored_occupations %>%
   geom_smooth(method = "lm")
 
 cor(
-  scored_occupations$ai_product_count_score, 
-  scored_occupations$ai_product_exposure_score, 
+  alt_count_scores$ai_product_count_score, 
+  alt_count_scores$ai_product_exposure_score, 
   method = "spearman",
   use = "pairwise.complete.obs"
 )
+
+alt_count_scores %>% 
+  select(
+    occupation_title, 
+    discrete = ai_product_exposure_percentile, 
+    count = ai_product_count_percentile
+  ) %>% 
+  mutate(absdiff = abs(discrete - count)) %>% 
+  arrange(desc(absdiff)) %>%
+  print(n = 50) %>%
+  pull(absdiff) %>% 
+  hist()
+
+# examine different discrete cutoffs --------------------------------------
+discrete_cutoffs <- c(1, 2, 3, 5, 10)
+
+alt_dc_scores <- aggregate_score_to_occupation_level(
+  scored_skills,
+  esco_occupation_skill_mapping,
+  esco_occupations,
+  final_measure = "exposure_score_p_similar",
+  remove_extra = T,
+  standardize = F, discrete_cutoff = 0
+) %>%
+  select(occupation_uri, occupation_title, ai_product_exposure_score) %>%
+  rename(
+    ai_product_exposure_score_0 = ai_product_exposure_score
+  )
+
+for (dc in discrete_cutoffs) {
+  new_score <- aggregate_score_to_occupation_level(
+    scored_skills,
+    esco_occupation_skill_mapping,
+    esco_occupations,
+    final_measure = "exposure_score_p_similar",
+    remove_extra = T,
+    standardize = F, discrete_cutoff = dc
+  )
+  
+  colnames(new_score)[colnames(new_score) == "ai_product_exposure_score"] <- paste0(
+    "ai_product_exposure_score_",
+    dc
+  )
+  
+  alt_dc_scores <- alt_dc_scores %>%
+    left_join(
+      new_score %>%
+        select(occupation_uri, !!sym(paste0("ai_product_exposure_score_", dc))),
+      by = "occupation_uri"
+    )
+  
+  cor(
+    alt_dc_scores$ai_product_exposure_score_0,
+    alt_dc_scores[[paste0("ai_product_exposure_score_", dc)]],
+    method = "spearman",
+    use = "pairwise.complete.obs"
+  ) %>%
+    print()
+}
+
+alt_dc_scores %>%
+  ggplot(
+    aes(
+      x = ai_product_exposure_score_2,
+      y = ai_product_exposure_score_10
+    )
+  ) +
+  geom_point() +
+  geom_smooth(method = "lm") +
+  labs(
+    title = "Correlation between different discrete cutoffs",
+    x = "Discrete cutoff 0",
+    y = "Discrete cutoff 10"
+  )
+
+alt_dc_scores %>%
+  select(
+    occupation_title,
+    main = ai_product_exposure_score_0,
+    alt = ai_product_exposure_score_2,
+  ) %>%
+  mutate(
+    main_percentile = ecdf(main)(main),
+    alt_percentile = ecdf(alt)(alt)
+  ) %>%
+  filter(
+    main > mean(main) |
+      alt > mean(alt)
+  ) %>%
+  mutate(
+    absdiff = abs(main - alt),
+    percdiff = abs(main_percentile - alt_percentile)
+  ) %>%
+  arrange(desc(percdiff)) %>%
+  print(n = 50) %>%
+  pull(absdiff) %>%
+  hist()
+  
+
+# examine self report vs independent --------------------------------------
+alt_source_scores <- aggregate_score_to_occupation_level(
+  scored_skills,
+  esco_occupation_skill_mapping,
+  esco_occupations,
+  final_measure = "exposure_score_p_similar_company",
+  remove_extra = T,
+  standardize = F, discrete_cutoff = 0
+) %>%
+  select(occupation_uri, occupation_title, ai_product_exposure_score) %>%
+  rename(
+    ai_product_exposure_company = ai_product_exposure_score
+  ) %>%
+  left_join(
+    aggregate_score_to_occupation_level(
+      scored_skills,
+      esco_occupation_skill_mapping,
+      esco_occupations,
+      final_measure = "exposure_score_p_similar_report",
+      remove_extra = T,
+      standardize = F, discrete_cutoff = 0
+    ) %>%
+      select(occupation_uri, occupation_title, ai_product_exposure_score) %>%
+      rename(
+        ai_product_exposure_independent = ai_product_exposure_score
+      ),
+    by = c("occupation_uri", "occupation_title")
+  )
+
+alt_source_scores_1_0 <- aggregate_score_to_occupation_level(
+  scored_skills,
+  esco_occupation_skill_mapping,
+  esco_occupations,
+  final_measure = "exposure_score_p_similar_company",
+  remove_extra = T,
+  standardize = F, discrete_cutoff = 1 # to account for company press releases being 2.46 times more frequent
+) %>%
+  select(occupation_uri, occupation_title, ai_product_exposure_score) %>%
+  rename(
+    ai_product_exposure_company = ai_product_exposure_score
+  ) %>%
+  left_join(
+    aggregate_score_to_occupation_level(
+      scored_skills,
+      esco_occupation_skill_mapping,
+      esco_occupations,
+      final_measure = "exposure_score_p_similar_report",
+      remove_extra = T,
+      standardize = F, discrete_cutoff = 0
+    ) %>%
+      select(occupation_uri, occupation_title, ai_product_exposure_score) %>%
+      rename(
+        ai_product_exposure_independent = ai_product_exposure_score
+      ),
+    by = c("occupation_uri", "occupation_title")
+  )
+
+alt_source_scores_1_1 <- aggregate_score_to_occupation_level(
+  scored_skills,
+  esco_occupation_skill_mapping,
+  esco_occupations,
+  final_measure = "exposure_score_p_similar_company",
+  remove_extra = T,
+  standardize = F, discrete_cutoff = 1 # to account for company press releases being 2.46 times more frequent
+) %>%
+  select(occupation_uri, occupation_title, ai_product_exposure_score) %>%
+  rename(
+    ai_product_exposure_company = ai_product_exposure_score
+  ) %>%
+  left_join(
+    aggregate_score_to_occupation_level(
+      scored_skills,
+      esco_occupation_skill_mapping,
+      esco_occupations,
+      final_measure = "exposure_score_p_similar_report",
+      remove_extra = T,
+      standardize = F, discrete_cutoff = 0
+    ) %>%
+      select(occupation_uri, occupation_title, ai_product_exposure_score) %>%
+      rename(
+        ai_product_exposure_independent = ai_product_exposure_score
+      ),
+    by = c("occupation_uri", "occupation_title")
+  )
+
+cor(
+  alt_source_scores$ai_product_exposure_company,
+  alt_source_scores$ai_product_exposure_independent,
+  method = "spearman",
+  use = "pairwise.complete.obs"
+)
+
+summary(
+  lm(
+    ai_product_exposure_independent ~ ai_product_exposure_company,
+    data = alt_source_scores
+  )
+)
+
+alt_source_scores %>%
+  ggplot(
+    aes(
+      x = ai_product_exposure_company,
+      y = ai_product_exposure_independent
+    )
+  ) +
+  geom_point() +
+  geom_smooth(method = "lm") +
+  geom_abline(
+    intercept = 0,
+    slope = 1,
+    color = "red",
+    linetype = "dashed"
+  ) +
+  labs(
+    title = "Correlation between self-reported and independent measures",
+    x = "Self-reported measure",
+    y = "Independent measure"
+  )
 
 # examine different final measures ----------------------------------------
 potential_measures <- c(
@@ -795,9 +1030,9 @@ write_csv(
     group_by(skill_group_level_1 = supergroup_label) %>%
     summarise(
       n_skills = n(),
-      ave_max_similarity_standardized = mean(max_similarity_standardized)
+      ave_n_similar_l3 = mean(n_similar_l3)
     ) %>%
-    arrange(desc(ave_max_similarity_standardized)) %>%
+    arrange(desc(ave_n_similar_l3)) %>%
     filter(!is.na(skill_group_level_1)), 
   file.path(
     args$output_dir, 
@@ -811,9 +1046,9 @@ write_csv(
     group_by(skill_group_level_2 = group_label) %>%
     summarise(
       n_skills = n(),
-      ave_max_similarity_standardized = mean(max_similarity_standardized)
+      ave_n_similar_l3 = mean(n_similar_l3)
     ) %>%
-    arrange(desc(ave_max_similarity_standardized)) %>%
+    arrange(desc(ave_n_similar_l3)) %>%
     filter(!is.na(skill_group_level_2)), 
   file.path(
     args$output_dir, 

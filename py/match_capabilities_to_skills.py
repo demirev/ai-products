@@ -40,12 +40,12 @@ def get_sentence_embeddings(text, sentence_model=sentence_model):
   return sentence_model.encode(text)
 
 
-def pull_all_capabilities(scored_releases, intent=None):
+def pull_all_capabilities(scored_releases, intent=None, type=None):
 	all_capabilities = []
 	if intent is not None:
 		if intent == 'automation':
 			relevant_intents = [
-        'End-toEnd Processing', 
+        'End-to-End Processing', 
         'Replacement Messaging', 
         'Self-Correction Mechanisms',
         'Volume/Scale Emphasis' 
@@ -60,12 +60,33 @@ def pull_all_capabilities(scored_releases, intent=None):
 			raise ValueError(f"Invalid intent: {intent}")
 	else:
 		relevant_intents = None
+        
+	if type is not None:
+		if type == 'announcement':
+			relevant_types = [
+        'AI Product Launch Announcement',
+        'AI Product Adoption Announcement'
+      ]
+		elif type == 'report':
+			relevant_types = [
+        'AI Product News',
+        'AI Product Market Report'
+      ]
+		else:
+			raise ValueError(f"Invalid type: {type}")
+	else:
+		relevant_types = None
+
 
 	for release in scored_releases:
 		capability = release.get('capability_string', '')
 		release_type = release.get('document_type', '')
 		intent_type = release.get('intent_type', '')
-		if capability != '' and capability != '""' and release_type != 'Not Relevant' and (relevant_intents is None or intent_type in relevant_intents):
+		string_not_empty = capability != '' and capability != '""'
+		release_is_relevant = release_type != 'Not Relevant'
+		intent_matches = relevant_intents is None or intent_type in relevant_intents
+		type_matches = relevant_types is None or release_type in relevant_types
+		if string_not_empty and release_is_relevant and intent_matches and type_matches:
 			# Parse the string as a JSON array
 			try:  
 				capability_list = json.loads(capability.replace("'", '"'))
@@ -225,6 +246,13 @@ if __name__ == "__main__":
   augmentation_releases = [sr for sr in scored_releases if sr["document_type"] != "Not Relevant" and sr["intent_type"] in augmentation_intents]
   print(f"Augmentation releases: {len(augmentation_releases)}") 
   # 3673
+  company_releases = [sr for sr in scored_releases if sr["document_type"] == "AI Product Launch Announcement" or sr["document_type"] == "AI Product Adoption Announcement"]
+  print(f"Company releases: {len(company_releases)}")
+  # 5973
+  report_releases = [sr for sr in scored_releases if sr["document_type"] == "AI Product Market Report" or sr["document_type"] == "AI Product News"]
+  print(f"Report releases: {len(report_releases)}")
+  # 2419
+  
 
   # only populated capabilities
   all_capabilities = pull_all_capabilities(scored_releases)
@@ -236,6 +264,12 @@ if __name__ == "__main__":
   augmentation_capabilities = pull_all_capabilities(scored_releases, intent='augmentation')
   print(f"Augmentation capabilities: {len(augmentation_capabilities)}")
   # 11843
+  company_capabilities = pull_all_capabilities(scored_releases, type='announcement')
+  print(f"Company capabilities: {len(company_capabilities)}")
+  # 19992
+  report_capabilities = pull_all_capabilities(scored_releases, type='report')
+  print(f"Report capabilities: {len(report_capabilities)}")
+  # 7422
 
   if not args.no_embedding:
     # embed capabilities
@@ -352,6 +386,8 @@ if __name__ == "__main__":
     # Find indices of automation and augmentation capabilities in all_capabilities
     automation_indices = [i for i, cap in enumerate(all_capabilities) if cap in automation_capabilities]
     augmentation_indices = [i for i, cap in enumerate(all_capabilities) if cap in augmentation_capabilities]
+    company_indices = [i for i, cap in enumerate(all_capabilities) if cap in company_capabilities]
+    report_indices = [i for i, cap in enumerate(all_capabilities) if cap in report_capabilities]
     
     # calculate summary scores
     summary_scores = []
@@ -391,7 +427,9 @@ if __name__ == "__main__":
       # Create subset arrays using the indices
       cosine_similarities_automation = cosine_similarities[automation_indices] if automation_indices else np.array([])
       cosine_similarities_augmentation = cosine_similarities[augmentation_indices] if augmentation_indices else np.array([])
-      
+      cosine_similarities_company = cosine_similarities[company_indices] if company_indices else np.array([])
+      cosine_similarities_report = cosine_similarities[report_indices] if report_indices else np.array([])
+
       summary_scores.append({
         'esco_skill_label': skill.get('preferredLabel', ''),
         'esco_skill_uri': skill.get('conceptUri', ''),
@@ -405,6 +443,8 @@ if __name__ == "__main__":
         'n_similar_l3': [np.sum(cosine_similarities >= cut_off_values['level_3']) if not no_skill_group else None][0],
         'n_similar_l3_automation_intent': [np.sum(cosine_similarities_automation >= cut_off_values['level_3']) if not no_skill_group else None][0],
         'n_similar_l3_augmentation_intent': [np.sum(cosine_similarities_augmentation >= cut_off_values['level_3']) if not no_skill_group else None][0],
+        'n_similar_l3_company_source': [np.sum(cosine_similarities_company >= cut_off_values['level_3']) if not no_skill_group else None][0],
+        'n_similar_l3_report_source': [np.sum(cosine_similarities_report >= cut_off_values['level_3']) if not no_skill_group else None][0],
         'mean_similarity_l3': [np.nanmean(cosine_similarities[cosine_similarities >= cut_off_values['level_3']]) if not no_skill_group else None][0],
         'mean_similarity_l3_automation_intent': [np.nanmean(cosine_similarities_automation[cosine_similarities_automation >= cut_off_values['level_3']]) if not no_skill_group else None][0],
         'mean_similarity_l3_augmentation_intent': [np.nanmean(cosine_similarities_augmentation[cosine_similarities_augmentation >= cut_off_values['level_3']]) if not no_skill_group else None][0],
@@ -427,6 +467,8 @@ if __name__ == "__main__":
     print(f"Total summary scores with n_similar_l3 != 0: {len([ss for ss in summary_scores if ss['n_similar_l3'] != 0])}") # 1709
     print(f"Total summary scores with n_similar_l3_automation_intent != 0: {len([ss for ss in summary_scores if ss['n_similar_l3_automation_intent'] != 0])}") # 615
     print(f"Total summary scores with n_similar_l3_augmentation_intent != 0: {len([ss for ss in summary_scores if ss['n_similar_l3_augmentation_intent'] != 0])}") # 1095
+    print(f"Total summary scores with n_similar_l3_company_source != 0: {len([ss for ss in summary_scores if ss['n_similar_l3_company_source'] != 0])}") # 1402
+    print(f"Total summary scores with n_similar_l3_report_source != 0: {len([ss for ss in summary_scores if ss['n_similar_l3_report_source'] != 0])}") # 843
     print(f"Total summary scores with n_similar_l2 != 0: {len([ss for ss in summary_scores if ss['n_similar_l2'] != 0])}") # 3224
     print(f"Total summary scores with n_similar_l2_automation_intent != 0: {len([ss for ss in summary_scores if ss['n_similar_l2_automation_intent'] != 0])}") # 1358
     print(f"Total summary scores with n_similar_l2_augmentation_intent != 0: {len([ss for ss in summary_scores if ss['n_similar_l2_augmentation_intent'] != 0])}") # 2254
