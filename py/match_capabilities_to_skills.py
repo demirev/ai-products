@@ -42,6 +42,7 @@ def get_sentence_embeddings(text, sentence_model=sentence_model):
 
 def pull_all_capabilities(scored_releases, intent=None, type=None):
 	all_capabilities = []
+	all_release_idxs = []
 	if intent is not None:
 		if intent == 'automation':
 			relevant_intents = [
@@ -78,6 +79,7 @@ def pull_all_capabilities(scored_releases, intent=None, type=None):
 		relevant_types = None
 
 
+	i = 0
 	for release in scored_releases:
 		capability = release.get('capability_string', '')
 		release_type = release.get('document_type', '')
@@ -91,9 +93,11 @@ def pull_all_capabilities(scored_releases, intent=None, type=None):
 			try:  
 				capability_list = json.loads(capability.replace("'", '"'))
 				all_capabilities.extend(capability_list)
+				all_release_idxs.extend([i] * len(capability_list))
 			except:
 				print(f"Error parsing capability: {capability}")
-	return all_capabilities
+		i += 1
+	return all_capabilities, all_release_idxs
 
 
 def cosine_similarity(v1, v2):
@@ -255,21 +259,32 @@ if __name__ == "__main__":
   
 
   # only populated capabilities
-  all_capabilities = pull_all_capabilities(scored_releases)
-  print(f"Total capabilities: {len(all_capabilities)}")
+  total_capabilities, all_release_idxs = pull_all_capabilities(scored_releases)
+  print(f"Total non-unique capabilities: {len(total_capabilities)}")
   # 27414
-  automation_capabilities = pull_all_capabilities(scored_releases, intent='automation')
+  print(f"Total unique capabilities: {len(set(total_capabilities))}")
+  # 25187
+  #all_capabilities = list(set(total_capabilities))
+  all_capabilities = total_capabilities # keep duplicates so that multiple releases for the same capability are not lost
+ 
+  all_automation_capabilities, _ = pull_all_capabilities(scored_releases, intent='automation')
+  all_augmentation_capabilities, _ = pull_all_capabilities(scored_releases, intent='augmentation')
+  all_company_capabilities, _ = pull_all_capabilities(scored_releases, type='announcement')
+  all_report_capabilities, _ = pull_all_capabilities(scored_releases, type='report')
+
+  automation_capabilities = [ac for ac in all_automation_capabilities if ac not in all_augmentation_capabilities] # only unambiguously automation capabilities
+  augmentation_capabilities = [ac for ac in all_augmentation_capabilities if ac not in all_automation_capabilities] # only unambiguously augmentation capabilities
+  company_capabilities = [ac for ac in all_company_capabilities if ac not in all_report_capabilities] # only unambiguously company capabilities
+  report_capabilities = [ac for ac in all_report_capabilities if ac not in all_company_capabilities] # only unambiguously report capabilities
+
   print(f"Automation capabilities: {len(automation_capabilities)}")
-  # 5790
-  augmentation_capabilities = pull_all_capabilities(scored_releases, intent='augmentation')
+  # 12826
   print(f"Augmentation capabilities: {len(augmentation_capabilities)}")
-  # 11843
-  company_capabilities = pull_all_capabilities(scored_releases, type='announcement')
+  # 11084
   print(f"Company capabilities: {len(company_capabilities)}")
-  # 19992
-  report_capabilities = pull_all_capabilities(scored_releases, type='report')
+  # 19024
   print(f"Report capabilities: {len(report_capabilities)}")
-  # 7422
+  # 6637
 
   if not args.no_embedding:
     # embed capabilities
@@ -278,7 +293,8 @@ if __name__ == "__main__":
     # Save capabilities with vectors using pandas
     capability_df = pd.DataFrame({
       'capability': all_capabilities,
-      'vector': [json.dumps(vector.tolist()) for vector in capability_vectors]
+      'vector': [json.dumps(vector.tolist()) for vector in capability_vectors],
+      'release_idx': all_release_idxs
     })
     capability_df.to_csv(capability_vector_file, index=False)
     print(f"Saved capability vectors to {capability_vector_file}")
@@ -298,6 +314,7 @@ if __name__ == "__main__":
   capability_df = pd.read_csv(capability_vector_file)
   if not capability_df.empty:
     capability_vectors = np.array([np.array(json.loads(vector)) for vector in capability_df['vector']])
+    release_idxs = capability_df['release_idx'].tolist()
   else:
     raise ValueError("Capability vectors not found")
   
@@ -384,10 +401,10 @@ if __name__ == "__main__":
       raise ValueError("Within-skill similarity not found")
 
     # Find indices of automation and augmentation capabilities in all_capabilities
-    automation_indices = [i for i, cap in enumerate(all_capabilities) if cap in automation_capabilities]
-    augmentation_indices = [i for i, cap in enumerate(all_capabilities) if cap in augmentation_capabilities]
-    company_indices = [i for i, cap in enumerate(all_capabilities) if cap in company_capabilities]
-    report_indices = [i for i, cap in enumerate(all_capabilities) if cap in report_capabilities]
+    automation_indices = [i for i, cap in enumerate(capability_df['capability']) if cap in automation_capabilities] # indices are relative to the capability_df not all_capabilities
+    augmentation_indices = [i for i, cap in enumerate(capability_df['capability']) if cap in augmentation_capabilities]
+    company_indices = [i for i, cap in enumerate(capability_df['capability']) if cap in company_capabilities]
+    report_indices = [i for i, cap in enumerate(capability_df['capability']) if cap in report_capabilities]
     
     # calculate summary scores
     summary_scores = []
@@ -440,20 +457,75 @@ if __name__ == "__main__":
         'logsumexp_similarity_5': log_sum_exp(cosine_similarities, gamma=5),
         'logsumexp_similarity_10': log_sum_exp(cosine_similarities, gamma=10),
         'logsumexp_similarity_100': log_sum_exp(cosine_similarities, gamma=100),
-        'n_similar_l3': [np.sum(cosine_similarities >= cut_off_values['level_3']) if not no_skill_group else None][0],
-        'n_similar_l3_automation_intent': [np.sum(cosine_similarities_automation >= cut_off_values['level_3']) if not no_skill_group else None][0],
-        'n_similar_l3_augmentation_intent': [np.sum(cosine_similarities_augmentation >= cut_off_values['level_3']) if not no_skill_group else None][0],
-        'n_similar_l3_company_source': [np.sum(cosine_similarities_company >= cut_off_values['level_3']) if not no_skill_group else None][0],
-        'n_similar_l3_report_source': [np.sum(cosine_similarities_report >= cut_off_values['level_3']) if not no_skill_group else None][0],
+        'n_similar_l3': [
+            len(set(release_idxs[i] for i, sim in enumerate(cosine_similarities) 
+                 if sim >= cut_off_values['level_3'])) 
+            if not no_skill_group 
+            else None
+        ][0],
+        'n_similar_l3_automation_intent': [
+            len(set(release_idxs[i] for i, sim in enumerate(cosine_similarities) 
+                 if sim >= cut_off_values['level_3'] and i in automation_indices)) 
+            if not no_skill_group 
+            else None
+        ][0],
+        'n_similar_l3_augmentation_intent': [
+            len(set(release_idxs[i] for i, sim in enumerate(cosine_similarities) 
+                 if sim >= cut_off_values['level_3'] and i in augmentation_indices)) 
+            if not no_skill_group 
+            else None
+        ][0],
+        'n_similar_l3_company_source': [  
+            len(set(release_idxs[i] for i, sim in enumerate(cosine_similarities) 
+                 if sim >= cut_off_values['level_3'] and i in company_indices)) 
+            if not no_skill_group 
+            else None
+        ][0],
+        'n_similar_l3_report_source': [
+            len(set(release_idxs[i] for i, sim in enumerate(cosine_similarities) 
+                 if sim >= cut_off_values['level_3'] and i in report_indices)) 
+            if not no_skill_group 
+            else None
+        ][0],
         'mean_similarity_l3': [np.nanmean(cosine_similarities[cosine_similarities >= cut_off_values['level_3']]) if not no_skill_group else None][0],
         'mean_similarity_l3_automation_intent': [np.nanmean(cosine_similarities_automation[cosine_similarities_automation >= cut_off_values['level_3']]) if not no_skill_group else None][0],
         'mean_similarity_l3_augmentation_intent': [np.nanmean(cosine_similarities_augmentation[cosine_similarities_augmentation >= cut_off_values['level_3']]) if not no_skill_group else None][0],
-        'n_similar_l2': [np.sum(cosine_similarities >= cut_off_values['level_2']) if not no_skill_group else None][0],
-        'n_similar_l2_automation_intent': [np.sum(cosine_similarities_automation >= cut_off_values['level_2']) if not no_skill_group else None][0],
-        'n_similar_l2_augmentation_intent': [np.sum(cosine_similarities_augmentation >= cut_off_values['level_2']) if not no_skill_group else None][0],
-        'n_similar_l1': [np.sum(cosine_similarities >= cut_off_values['level_1']) if not no_skill_group else None][0],
-        'n_similar_l1_automation_intent': [np.sum(cosine_similarities_automation >= cut_off_values['level_1']) if not no_skill_group else None][0],
-        'n_similar_l1_augmentation_intent': [np.sum(cosine_similarities_augmentation >= cut_off_values['level_1']) if not no_skill_group else None][0],
+        'n_similar_l2': [
+            len(set(release_idxs[i] for i, sim in enumerate(cosine_similarities) 
+                 if sim >= cut_off_values['level_2'])) 
+            if not no_skill_group 
+            else None
+        ][0],
+        'n_similar_l2_automation_intent': [
+            len(set(release_idxs[i] for i, sim in enumerate(cosine_similarities) 
+                 if sim >= cut_off_values['level_2'] and i in automation_indices)) 
+            if not no_skill_group 
+            else None
+        ][0],
+        'n_similar_l2_augmentation_intent': [
+            len(set(release_idxs[i] for i, sim in enumerate(cosine_similarities) 
+                 if sim >= cut_off_values['level_2'] and i in augmentation_indices)) 
+            if not no_skill_group 
+            else None
+        ][0],
+        'n_similar_l1': [
+            len(set(release_idxs[i] for i, sim in enumerate(cosine_similarities) 
+                 if sim >= cut_off_values['level_1'])) 
+            if not no_skill_group 
+            else None
+        ][0],
+        'n_similar_l1_automation_intent': [
+            len(set(release_idxs[i] for i, sim in enumerate(cosine_similarities) 
+                 if sim >= cut_off_values['level_1'] and i in automation_indices)) 
+            if not no_skill_group 
+            else None
+        ][0],
+        'n_similar_l1_augmentation_intent': [
+            len(set(release_idxs[i] for i, sim in enumerate(cosine_similarities) 
+                 if sim >= cut_off_values['level_1'] and i in augmentation_indices)) 
+            if not no_skill_group 
+            else None
+        ][0],
         'mean_similarity': np.nanmean(cosine_similarities),
         # 'mean_similarity_automation_intent': np.nanmean(cosine_similarities_automation) if len(cosine_similarities_automation) > 0 else None,
         # 'mean_similarity_augmentation_intent': np.nanmean(cosine_similarities_augmentation) if len(cosine_similarities_augmentation) > 0 else None,
@@ -465,13 +537,13 @@ if __name__ == "__main__":
     # save results
     print(f"Total summary scores: {len(summary_scores)}") # 10831
     print(f"Total summary scores with n_similar_l3 != 0: {len([ss for ss in summary_scores if ss['n_similar_l3'] != 0])}") # 1709
-    print(f"Total summary scores with n_similar_l3_automation_intent != 0: {len([ss for ss in summary_scores if ss['n_similar_l3_automation_intent'] != 0])}") # 615
-    print(f"Total summary scores with n_similar_l3_augmentation_intent != 0: {len([ss for ss in summary_scores if ss['n_similar_l3_augmentation_intent'] != 0])}") # 1095
-    print(f"Total summary scores with n_similar_l3_company_source != 0: {len([ss for ss in summary_scores if ss['n_similar_l3_company_source'] != 0])}") # 1402
-    print(f"Total summary scores with n_similar_l3_report_source != 0: {len([ss for ss in summary_scores if ss['n_similar_l3_report_source'] != 0])}") # 843
+    print(f"Total summary scores with n_similar_l3_automation_intent != 0: {len([ss for ss in summary_scores if ss['n_similar_l3_automation_intent'] != 0])}") # 1060
+    print(f"Total summary scores with n_similar_l3_augmentation_intent != 0: {len([ss for ss in summary_scores if ss['n_similar_l3_augmentation_intent'] != 0])}") # 1064
+    print(f"Total summary scores with n_similar_l3_company_source != 0: {len([ss for ss in summary_scores if ss['n_similar_l3_company_source'] != 0])}") # 1381
+    print(f"Total summary scores with n_similar_l3_report_source != 0: {len([ss for ss in summary_scores if ss['n_similar_l3_report_source'] != 0])}") # 790
     print(f"Total summary scores with n_similar_l2 != 0: {len([ss for ss in summary_scores if ss['n_similar_l2'] != 0])}") # 3224
-    print(f"Total summary scores with n_similar_l2_automation_intent != 0: {len([ss for ss in summary_scores if ss['n_similar_l2_automation_intent'] != 0])}") # 1358
-    print(f"Total summary scores with n_similar_l2_augmentation_intent != 0: {len([ss for ss in summary_scores if ss['n_similar_l2_augmentation_intent'] != 0])}") # 2254
+    print(f"Total summary scores with n_similar_l2_automation_intent != 0: {len([ss for ss in summary_scores if ss['n_similar_l2_automation_intent'] != 0])}") # 2177
+    print(f"Total summary scores with n_similar_l2_augmentation_intent != 0: {len([ss for ss in summary_scores if ss['n_similar_l2_augmentation_intent'] != 0])}") # 2195
     
     save_list_to_csv(summary_scores, skills_output_file, append=False)
     print(f"Saved final results to {skills_output_file}")
