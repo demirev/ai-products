@@ -139,6 +139,9 @@ aggregate_score_to_occupation_level <- function(
     ) %>%
     summarise(
       n_skills = n(),
+      n_essential_skills = sum(
+        relation_type == "essential"
+      ),
       exposure_score_n_similar = sum(n_similar),
       exposure_score_n_similar_augmentation = sum(
         n_similar_augmentation
@@ -147,18 +150,44 @@ aggregate_score_to_occupation_level <- function(
         n_similar_automation
       ),
       exposure_score_p_similar = mean(n_similar > discrete_cutoff),
-      exposure_score_p_similar_augmentation = mean(
-        n_similar_augmentation > discrete_cutoff
-      ),
-      exposure_score_p_similar_automation = mean(
-        n_similar_automation > discrete_cutoff
-      ),
+      exposure_score_p_similar_essential = sum(
+        n_similar > discrete_cutoff & relation_type == "essential"
+      ) / n_essential_skills,
+      exposure_score_p_similar_augmentation = sum(ifelse(
+        n_similar > discrete_cutoff,
+        n_similar_augmentation / n_similar,
+        0
+      )) / n_skills,
+      exposure_score_p_similar_augmentation_essential = sum(ifelse(
+        n_similar > discrete_cutoff & relation_type == "essential",
+        n_similar_augmentation / n_similar,
+        0
+      )) / n_essential_skills,
+      exposure_score_p_similar_automation = sum(ifelse(
+        n_similar > discrete_cutoff,
+        n_similar_automation / n_similar,
+        0
+      )) / n_skills,
+      exposure_score_p_similar_automation_essential = sum(ifelse(
+        n_similar > discrete_cutoff & relation_type == "essential",
+        n_similar_automation / n_similar,
+        0
+      )) / n_essential_skills,
+      # exposure_score_p_similar_augmentation = mean(
+      #   n_similar_augmentation > discrete_cutoff
+      # ),
+      # exposure_score_p_similar_automation = mean(
+      #   n_similar_automation > discrete_cutoff
+      # ),
       exposure_score_p_similar_company = mean(
         n_similar_company > discrete_cutoff
       ),
       exposure_score_p_similar_report = mean(
         n_similar_report > discrete_cutoff
       ),
+      exposure_score_p_similar_report_essential = sum(
+        n_similar_report > discrete_cutoff & relation_type == "essential"
+      ) / n_essential_skills,
       exposure_score_mean_similar_weighted = weighted.mean(
         ifelse(is.nan(mean_similar), 0, mean_similar),
         ifelse(relation_type == "essential", 1, 0.5),
@@ -211,6 +240,20 @@ aggregate_score_to_occupation_level <- function(
     arrange(desc(exposure_score_mean_of_max_weighted))
   
   res$ai_product_exposure_score <- res[[final_measure]]
+  
+  if (any(is.na(res$ai_product_exposure_score))) {
+    n_missing <- sum(is.na(res$ai_product_exposure_score))
+    message(
+      paste0(
+        "Warning: ", n_missing, " occupations have NA exposure scores. ",
+        "This may be due to no essential skills for a given occupation."
+      )
+    )
+    res <- filter(
+      res,
+      !is.na(ai_product_exposure_score),
+    )
+  }
   
   if (standardize) {
     res <- res %>%
@@ -324,11 +367,18 @@ aggregate_skills_to_groups <- function(
   scored_skills, esco_skill_hierarchy, esco_skill_relations  
 ) {
   scored_skills %>%
-    mutate(
-      n_similar_l3_standardized = (n_similar_l3 - mean(n_similar_l3))/
-        sd(n_similar_l3)
+    # mutate(
+    #   n_similar_l3_standardized = (n_similar_l3 - mean(n_similar_l3))/
+    #     sd(n_similar_l3)
+    # ) %>%
+    select(
+      esco_skill_uri,
+      n_similar_l3, 
+      n_similar_l3_automation_intent,
+      n_similar_l3_augmentation_intent,
+      n_similar_l3_company_source,
+      n_similar_l3_report_source
     ) %>%
-    select(esco_skill_uri, n_similar_l3) %>%
     left_join(
       esco_skill_relations %>%
         filter(broaderType == "SkillGroup") %>%
@@ -406,11 +456,6 @@ esco_skill_hierarchy <- esco_skill_hierarchy %>%
 
 
 # find skill groups -------------------------------------------------------
-scored_skills %>% 
-  select(esco_skill_label, n_similar_l3) %>% 
-  arrange(desc(n_similar_l3)) %>%
-  print(n = 200)
-
 scored_skill_groups <- aggregate_skills_to_groups(
   scored_skills,
   esco_skill_hierarchy,
@@ -422,11 +467,14 @@ scored_skills$n_similar_l3 %>% quantile(seq(0,1,0.01)) # 97% have < 3, 84% < 0
 
 chosen_cutoff = 2 # at least n+1 required
 
+sum(scored_skills$n_similar_l3 > chosen_cutoff) # 549 yes, 10282 no
+sum(scored_skills$n_similar_l3 > 0) # 1709 yes, 9122 no
+
 scored_occupations <- aggregate_score_to_occupation_level(
   scored_skills,
   esco_occupation_skill_mapping,
   esco_occupations,
-  final_measure = "exposure_score_p_similar",
+  final_measure = "exposure_score_p_similar_essential",
   remove_extra = T,
   standardize = F, discrete_cutoff = chosen_cutoff
 ) %>%
@@ -435,7 +483,7 @@ scored_occupations <- aggregate_score_to_occupation_level(
       scored_skills,
       esco_occupation_skill_mapping,
       esco_occupations,
-      final_measure = "exposure_score_p_similar_augmentation",
+      final_measure = "exposure_score_p_similar_augmentation_essential",
       remove_extra = T,
       standardize = F, discrete_cutoff = chosen_cutoff
     ) %>%
@@ -450,13 +498,28 @@ scored_occupations <- aggregate_score_to_occupation_level(
       scored_skills,
       esco_occupation_skill_mapping,
       esco_occupations,
-      final_measure = "exposure_score_p_similar_automation",
+      final_measure = "exposure_score_p_similar_automation_essential",
       remove_extra = T,
       standardize = F, discrete_cutoff = chosen_cutoff
     ) %>%
       select(
         occupation_uri,
         ai_product_automation_score = ai_product_exposure_score
+      ),
+    by = "occupation_uri"
+  ) %>%
+  left_join(
+    aggregate_score_to_occupation_level(
+      scored_skills,
+      esco_occupation_skill_mapping,
+      esco_occupations,
+      final_measure = "exposure_score_p_similar_report_essential",
+      remove_extra = T,
+      standardize = F, discrete_cutoff = chosen_cutoff
+    ) %>%
+      select(
+        occupation_uri,
+        ai_product_third_party_score = ai_product_exposure_score
       ),
     by = "occupation_uri"
   )
@@ -815,99 +878,6 @@ scored_occupations_with_group_labels %>%
   arrange(desc(ai_product_augmentation_score)) %>%
   select(occupation_title, isco_group, ends_with("_score"))
 
-occupation_scores_level_3_table <- scored_occupations_with_group_labels %>%
-  group_by(isco_level_3, isco_level_3_label) %>%
-  summarize(group_mean = mean(ai_product_exposure_score)) %>%
-  ungroup() %>%
-  arrange(desc(group_mean)) %>%
-  print(n = Inf)
-
-occupation_scores_level_2_plot <- scored_occupations_with_group_labels %>%
-  group_by(
-    isco_level_2, 
-    isco_level_3
-  ) %>%
-  mutate(group_mean = mean(ai_product_exposure_score)) %>%
-  ungroup() %>%
-  mutate(
-    isco_level_2_label = ifelse(
-      isco_level_2_label == "Food processing, wood working, garment and other craft and related trades workers",
-      "Craft and related trades workers",
-      isco_level_2_label
-    ),
-    isco_level_2_label = factor(
-      isco_level_2_label,
-      levels = scored_occupations_with_group_labels %>%
-        mutate(
-          isco_level_2_label = ifelse(
-            isco_level_2_label == "Food processing, wood working, garment and other craft and related trades workers",
-            "Craft and related trades workers",
-            isco_level_2_label
-          )
-        ) %>%
-        group_by(isco_level_2_label) %>%
-        summarize(supergroup_mean = mean(ai_product_exposure_score)) %>%
-        arrange((supergroup_mean)) %>%
-        pull(isco_level_2_label)
-    )
-  ) %>%
-  ggplot(aes(x = ai_product_exposure_score, y = isco_level_2_label)) +
-  geom_jitter(width = 0, height = 0.2, color = "lightgray") +  # Jittered points in dim gray
-  #stat_summary(aes(group = isco_level_3_label), fun = mean, geom = "point", shape = 4, size = 1, color = "black") +  # Group mean as a smaller blue rhombus
-  stat_summary(fun = mean, geom = "point", shape = 18, size = 4, color = "red") +  # Supergroup mean as a larger red rhombus
-  labs(x = "Exposure score", y = "") +
-  theme_minimal() +
-  theme(text = element_text(family = "merriweather"))
-
-occupation_scores_level_2_table <- scored_occupations_with_group_labels %>%
-  group_by(isco_level_2, isco_level_2_label) %>%
-  summarize(group_mean = mean(ai_product_exposure_score)) %>%
-  ungroup() %>%
-  mutate(
-    isco_level_2_label = ifelse(
-      isco_level_2_label == "Food processing, wood working, garment and other craft and related trades workers",
-      "Craft and related trades workers",
-      isco_level_2_label
-    ),
-    isco_level_2_label = factor(
-      isco_level_2_label,
-      levels = scored_occupations_with_group_labels %>%
-        mutate(
-          isco_level_2_label = ifelse(
-            isco_level_2_label == "Food processing, wood working, garment and other craft and related trades workers",
-            "Craft and related trades workers",
-            isco_level_2_label
-          )
-        ) %>%
-        group_by(isco_level_2_label) %>%
-        summarize(supergroup_mean = mean(ai_product_exposure_score)) %>%
-        arrange((supergroup_mean)) %>%
-        pull(isco_level_2_label)
-    )
-  ) %>%
-  print(n = Inf)
-
-occupation_scores_level_1_plot <- scored_occupations_with_group_labels %>%
-  group_by(isco_level_1, isco_level_2) %>%
-  mutate(group_mean = mean(ai_product_exposure_score)) %>%
-  ungroup() %>%
-  mutate(
-    isco_level_1_label = factor(
-      isco_level_1_label,
-      levels = scored_occupations_with_group_labels %>%
-        group_by(isco_level_1_label) %>%
-        summarize(supergroup_mean = mean(ai_product_exposure_score)) %>%
-        arrange((supergroup_mean)) %>%
-        pull(isco_level_1_label)
-    )
-  ) %>%
-  ggplot(aes(x = ai_product_exposure_score, y = isco_level_1_label)) +
-  geom_jitter(width = 0, height = 0.2, color = "gray", alpha = 0.3) +  # Jittered points in dim gray
-  stat_summary(aes(group = isco_level_2_label), fun = mean, geom = "point", shape = 4, size = 1, color = "black") +  # Group mean as a smaller blue rhombus
-  stat_summary(fun = mean, geom = "point", shape = 18, size = 4, color = "red") +  # Supergroup mean as a larger red rhombus
-  labs(x = "Exposure score", y = "Occupation") +
-  theme_minimal()
-
 
 # # identify research relevant skills -------------------------------------
 scored_research_skills <- score_research_skills(
@@ -926,28 +896,6 @@ research_skills_box_plot <- plot_research_skills_boxplot(
   esco_research_skills
 ) + theme(legend.position = "none")
 
-scored_skills_plot <- scored_skill_groups %>%
-  filter(!is.na(supergroup_label)) %>%
-  group_by(supergroup_label, group_label) %>%
-  mutate(group_mean = mean(n_similar_l3)) %>%
-  ungroup() %>%
-  mutate(
-    supergroup_label = factor(
-      supergroup_label,
-      levels = scored_skill_groups %>%
-        group_by(supergroup_label) %>%
-        summarize(supergroup_mean = mean(n_similar_l3)) %>%
-        arrange((supergroup_mean)) %>%
-        pull(supergroup_label)
-    )
-  ) %>%
-  ggplot(aes(x = n_similar_l3, y = supergroup_label)) +
-  #geom_jitter(width = 0, height = 0.2, color = "gray", alpha = 0.3) +  # Jittered points in dim gray
-  stat_summary(aes(group = group_label), fun = mean, geom = "point", shape = 4, size = 1, color = "black") +  # Group mean as a smaller blue rhombus
-  stat_summary(fun = mean, geom = "point", shape = 18, size = 4, color = "red") +  # Supergroup mean as a larger red rhombus
-  labs(x = "Average Similarity Score", y = "Supergroup Label") +
-  theme_minimal() +
-  labs(y = "")
 
 scored_skill_groups %>%
   filter(!is.na(supergroup_label)) %>%
@@ -968,6 +916,7 @@ write_csv(
     "scored_esco_occupations.csv"
   )
 )
+
 
 write_csv(
   scored_occupations %>%
@@ -1025,12 +974,26 @@ write_csv(
   )
 )
 
+
+write_csv(
+  scored_skill_groups, 
+  file.path(
+    args$output_dir, 
+    "occupational_exposure_to_ai_products",
+    "scored_esco_skills_all_groups.csv"
+  )
+)
+
 write_csv(
   scored_skill_groups %>%
     group_by(skill_group_level_1 = supergroup_label) %>%
     summarise(
       n_skills = n(),
-      ave_n_similar_l3 = mean(n_similar_l3)
+      ave_n_similar_l3 = mean(n_similar_l3),
+      ave_n_similar_l3_automation_intent = mean(n_similar_l3_automation_intent),
+      ave_n_similar_l3_augmentation_intent = mean(n_similar_l3_augmentation_intent),
+      ave_n_similar_l3_company_source = mean(n_similar_l3_company_source),
+      ave_n_similar_l3_report_source = mean(n_similar_l3_report_source)
     ) %>%
     arrange(desc(ave_n_similar_l3)) %>%
     filter(!is.na(skill_group_level_1)), 
@@ -1046,7 +1009,11 @@ write_csv(
     group_by(skill_group_level_2 = group_label) %>%
     summarise(
       n_skills = n(),
-      ave_n_similar_l3 = mean(n_similar_l3)
+      ave_n_similar_l3 = mean(n_similar_l3),
+      ave_n_similar_l3_automation_intent = mean(n_similar_l3_automation_intent),
+      ave_n_similar_l3_augmentation_intent = mean(n_similar_l3_augmentation_intent),
+      ave_n_similar_l3_company_source = mean(n_similar_l3_company_source),
+      ave_n_similar_l3_report_source = mean(n_similar_l3_report_source)
     ) %>%
     arrange(desc(ave_n_similar_l3)) %>%
     filter(!is.na(skill_group_level_2)), 
@@ -1071,26 +1038,6 @@ ggsave(
   height = 5
 )
 
-ggsave(
-  file.path(args$output_dir, "plots", "scored_skills_plot.eps"),
-  scored_skills_plot,
-  width = 5,
-  height = 3
-)
-
-ggsave(
-  file.path(args$output_dir, "plots", "occupation_scores_level_2_plot.eps"),
-  occupation_scores_level_2_plot,
-  width = 9,
-  height = 7
-)
-
-ggsave(
-  file.path(args$output_dir, "plots", "occupation_scores_level_1_plot.eps"),
-  occupation_scores_level_1_plot,
-  width = 9,
-  height = 5
-)
 
 scored_occupations %>%
   group_by(isco_level_3 = substr(isco_group, 1, 3)) %>%
