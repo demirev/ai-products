@@ -301,6 +301,14 @@ list(
     scored_occupations_2digit$ai_product_exposure_score, 
     scored_occupations_2digit$mean_wage_coefficient
   ),
+  r_product_automation_wages = cor.test(
+    scored_occupations_2digit$ai_product_automation_score, 
+    scored_occupations_2digit$mean_wage_coefficient
+  ),
+  r_product_augmentation_wages = cor.test(
+    scored_occupations_2digit$ai_product_augmentation_score, 
+    scored_occupations_2digit$mean_wage_coefficient
+  ),
   r_felten_wages = cor.test(
     scored_occupations_2digit$felten_exposure_score, 
     scored_occupations_2digit$mean_wage_coefficient

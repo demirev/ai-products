@@ -85,6 +85,8 @@ convert_to_soc <- function(
     ) %>%
     summarise(
       ai_product_exposure_score = mean(ai_product_exposure_score),
+      ai_product_automation_score = mean(ai_product_automation_score),
+      ai_product_augmentation_score = mean(ai_product_augmentation_score),
       esco_title = occupation_title %>%
         unique() %>%
         sort() %>%
@@ -584,7 +586,9 @@ aggregate_occupations_to_3digit_isco <- function(
       isco_3digit
     ) %>%
     summarise(
-      ai_product_exposure_score = mean(ai_product_exposure_score)
+      ai_product_exposure_score = mean(ai_product_exposure_score),
+      ai_product_automation_score = mean(ai_product_automation_score),
+      ai_product_augmentation_score = mean(ai_product_augmentation_score)
     )
 }
 
@@ -694,6 +698,25 @@ scored_groups_matched <- scored_groups_matched %>%
   select(isco_3digit, group_label, everything())
 
 # calculate pairwise correlations ----------------------------------------
+# main exposure score
+cor.test(
+  scored_occupations_matched$ai_product_exposure_score,
+  scored_occupations_matched$felten_exposure_score,
+  method = "pearson"
+)
+
+cor.test(
+  scored_occupations_matched$ai_product_exposure_score,
+  scored_occupations_matched$webb_exposure_score,
+  method = "pearson"
+)
+
+cor.test(
+  scored_occupations_matched$ai_product_exposure_score,
+  scored_occupations_matched$beta_eloundou,
+  method = "pearson"
+)
+
 correlations <- scored_occupations_matched %>%
   select(
     ai_product_exposure_score,
@@ -702,7 +725,7 @@ correlations <- scored_occupations_matched %>%
     beta_eloundou
   ) %>%
   as.matrix() %>%
-  Hmisc::rcorr(type = "spearman") %>%
+  Hmisc::rcorr() %>%
   (function(x) {
     tibble(
       var1 = rep(colnames(x$r), each = ncol(x$r)),
@@ -715,6 +738,63 @@ correlations <- scored_occupations_matched %>%
   filter(var1 != var2) %>%
   filter(!duplicated(r))
 
+# automation score
+cor.test(
+  scored_occupations_matched$ai_product_automation_score,
+  scored_occupations_matched$felten_exposure_score,
+  method = "pearson"
+)
+
+cor.test(
+  scored_occupations_matched$ai_product_automation_score,
+  scored_occupations_matched$webb_exposure_score,
+  method = "pearson"
+)
+
+cor.test(
+  scored_occupations_matched$ai_product_automation_score,
+  scored_occupations_matched$beta_eloundou,
+  method = "pearson"
+)
+
+# augmentation score
+cor.test(
+  scored_occupations_matched$ai_product_augmentation_score,
+  scored_occupations_matched$felten_exposure_score,
+  method = "pearson"
+)
+
+cor.test(
+  scored_occupations_matched$ai_product_augmentation_score,
+  scored_occupations_matched$webb_exposure_score,
+  method = "pearson"
+)
+
+cor.test(
+  scored_occupations_matched$ai_product_augmentation_score,
+  scored_occupations_matched$beta_eloundou,
+  method = "pearson"
+)
+
+# group exposure score
+cor.test(
+  scored_groups_matched$ai_product_exposure_score,
+  scored_groups_matched$felten_exposure_score,
+  method = "pearson"
+)
+
+cor.test(
+  scored_groups_matched$ai_product_exposure_score,
+  scored_groups_matched$webb_exposure_score,
+  method = "pearson"
+)
+
+cor.test(
+  scored_groups_matched$ai_product_exposure_score,
+  scored_groups_matched$beta_eloundou,
+  method = "pearson"
+)
+
 correlations_grouped <- scored_groups_matched %>%
   select(
     ai_product_exposure_score,
@@ -723,7 +803,7 @@ correlations_grouped <- scored_groups_matched %>%
     beta_eloundou
   ) %>%
   as.matrix() %>%
-  Hmisc::rcorr(type = "spearman") %>%
+  Hmisc::rcorr() %>%
   (function(x) {
     tibble(
       var1 = rep(colnames(x$r), each = ncol(x$r)),
@@ -737,9 +817,17 @@ correlations_grouped <- scored_groups_matched %>%
   filter(!duplicated(r))
 
 # plots -------------------------------------------------------------------
-ai_product_exposure_mean = mean(
-  scored_occupations_matched$ai_product_exposure_score, na.rm = TRUE
-) # 0.115821
+ai_product_score_means <- list(
+  exposure = mean(
+    scored_occupations_matched$ai_product_exposure_score, na.rm = TRUE
+  ), # 0.109345
+  automation = mean(
+    scored_occupations_matched$ai_product_automation_score, na.rm = TRUE
+  ), # 0.04985087
+  augmentation = mean(
+    scored_occupations_matched$ai_product_augmentation_score, na.rm = TRUE
+  ) # 0.04115786
+)
 
 # ggplot of ai_product_exposure_score vs felten_exposure_score
 vs_felten_plot <- scored_occupations_matched %>%
@@ -758,7 +846,7 @@ vs_felten_plot <- scored_occupations_matched %>%
   ) +
   # add gray dashed lines at x = 0 and y = 0
   geom_vline(xintercept = 0, linetype = "dashed", color = "gray") +
-  geom_hline(yintercept = ai_product_exposure_mean, linetype = "dashed", color = "gray") +
+  geom_hline(yintercept = ai_product_score_means$exposure, linetype = "dashed", color = "gray") +
   theme_minimal() +
   theme(text = element_text(family = "merriweather"))
 
@@ -778,7 +866,7 @@ vs_felten_plot_grouped <- scored_groups_matched %>%
   ) +
   # add gray dashed lines at x = 0 and y = 0
   geom_vline(xintercept = 0, linetype = "dashed", color = "gray") +
-  geom_hline(yintercept = ai_product_exposure_mean, linetype = "dashed", color = "gray") +
+  geom_hline(yintercept = ai_product_score_means$exposure, linetype = "dashed", color = "gray") +
   theme_minimal() +
   theme(text = element_text(family = "merriweather"))
 
@@ -788,52 +876,68 @@ list(
   high_felten_low_product_exposure_groups = scored_groups_matched %>%
     filter(
       felten_exposure_score > 0,
-      ai_product_exposure_score < ai_product_exposure_mean
+      #ai_product_exposure_score < ai_product_score_means$exposure
+      ai_product_automation_score < ai_product_score_means$automation,
+      ai_product_augmentation_score < ai_product_score_means$augmentation,
     ) %>%
     select(
       isco_3digit,
       group_label,
+      felten_exposure_score,
       ai_product_exposure_score,
-      felten_exposure_score
+      ai_product_automation_score,
+      ai_product_augmentation_score
     ) %>%
     arrange(desc(felten_exposure_score)),
   low_felten_high_product_exposure_groups = scored_groups_matched %>%
     filter(
       felten_exposure_score < 0,
-      ai_product_exposure_score > ai_product_exposure_mean
+      #ai_product_exposure_score > ai_product_score_means$exposure
+      ai_product_automation_score > ai_product_score_means$automation,
+      ai_product_augmentation_score > ai_product_score_means$augmentation,
     ) %>%
     select(
       isco_3digit,
       group_label,
+      felten_exposure_score,
       ai_product_exposure_score,
-      felten_exposure_score
+      ai_product_automation_score,
+      ai_product_augmentation_score
     ) %>%
-    arrange(ai_product_exposure_score),
+    arrange(desc(ai_product_exposure_score)),
   # by occupation
   high_felten_low_product_exposure = scored_occupations_matched %>%
     filter(
       felten_exposure_score > 0,
-      ai_product_exposure_score < ai_product_exposure_mean
+      #ai_product_exposure_score < ai_product_score_means$exposure
+      ai_product_automation_score < ai_product_score_means$automation,
+      ai_product_augmentation_score < ai_product_score_means$augmentation,
     ) %>%
     select(
       occupation_title,
       isco_group,
+      felten_exposure_score,
       ai_product_exposure_score,
-      felten_exposure_score
+      ai_product_automation_score,
+      ai_product_augmentation_score
     ) %>%
     arrange(desc(felten_exposure_score)),
   low_felten_high_product_exposure = scored_occupations_matched %>%
     filter(
       felten_exposure_score < 0,
-      ai_product_exposure_score > ai_product_exposure_mean
+      #ai_product_exposure_score > ai_product_score_means$exposure
+      ai_product_automation_score > ai_product_score_means$automation,
+      ai_product_augmentation_score > ai_product_score_means$augmentation,
     ) %>%
     select(
       occupation_title,
       isco_group,
+      felten_exposure_score,
       ai_product_exposure_score,
-      felten_exposure_score
+      ai_product_automation_score,
+      ai_product_augmentation_score
     ) %>%
-    arrange(ai_product_exposure_score)
+    arrange(desc(ai_product_exposure_score))
 )
 
 vs_eloundou_plot <- scored_occupations_matched %>%
@@ -851,7 +955,11 @@ vs_eloundou_plot <- scored_occupations_matched %>%
   ) +
   # add gray dashed lines at x = 0 and y = 0
   geom_vline(xintercept = 0.5, linetype = "dashed", color = "gray") +
-  geom_hline(yintercept = ai_product_exposure_mean, linetype = "dashed", color = "gray") +
+  geom_hline(
+    yintercept = ai_product_score_means$exposure, 
+    linetype = "dashed", 
+    color = "gray"
+  ) +
   theme_minimal() +
   theme(text = element_text(family = "merriweather"))
 
@@ -870,7 +978,7 @@ vs_eloundou_plot_grouped <- scored_groups_matched %>%
   ) +
   # add gray dashed lines at x = 0 and y = 0
   geom_vline(xintercept = 0.5, linetype = "dashed", color = "gray") +
-  geom_hline(yintercept = ai_product_exposure_mean, linetype = "dashed", color = "gray") +
+  geom_hline(yintercept = ai_product_score_means$exposure, linetype = "dashed", color = "gray") +
   theme_minimal() +
   theme(text = element_text(family = "merriweather"))
 
@@ -880,52 +988,68 @@ list(
   high_eloundou_low_product_exposure_groups = scored_groups_matched %>%
     filter(
       beta_eloundou > 0.5,
-      ai_product_exposure_score < ai_product_exposure_mean
+      #ai_product_exposure_score < ai_product_score_means$exposure
+      ai_product_automation_score < ai_product_score_means$automation,
+      ai_product_augmentation_score < ai_product_score_means$augmentation,
     ) %>%
     select(
       isco_3digit,
       group_label,
+      beta_eloundou,
       ai_product_exposure_score,
-      beta_eloundou
+      ai_product_automation_score,
+      ai_product_augmentation_score
     ) %>%
     arrange(desc(beta_eloundou)),
   low_eloundou_high_product_exposure_groups = scored_groups_matched %>%
     filter(
       beta_eloundou < 0.5,
-      ai_product_exposure_score > ai_product_exposure_mean
+      #ai_product_exposure_score > ai_product_score_means$exposure
+      ai_product_automation_score > ai_product_score_means$automation,
+      ai_product_augmentation_score > ai_product_score_means$augmentation,
     ) %>%
     select(
       isco_3digit,
       group_label,
+      beta_eloundou,
       ai_product_exposure_score,
-      beta_eloundou
+      ai_product_automation_score,
+      ai_product_augmentation_score
     ) %>%
-    arrange(ai_product_exposure_score),
+    arrange(desc(ai_product_exposure_score)),
   # by occupation
   high_eloundou_low_product_exposure = scored_occupations_matched %>%
     filter(
       beta_eloundou > 0.5,
-      ai_product_exposure_score < ai_product_exposure_mean
+      #ai_product_exposure_score < ai_product_score_means$exposure
+      ai_product_automation_score < ai_product_score_means$automation,
+      ai_product_augmentation_score < ai_product_score_means$augmentation,
     ) %>%
     select(
       occupation_title,
       isco_group,
+      beta_eloundou,
       ai_product_exposure_score,
-      beta_eloundou
+      ai_product_automation_score,
+      ai_product_augmentation_score
     ) %>%
     arrange(desc(beta_eloundou)),
   low_eloundou_high_product_exposure = scored_occupations_matched %>%
     filter(
       beta_eloundou < 0.5,
-      ai_product_exposure_score > ai_product_exposure_mean
+      #ai_product_exposure_score > ai_product_score_means$exposure
+      ai_product_automation_score > ai_product_score_means$automation,
+      ai_product_augmentation_score > ai_product_score_means$augmentation,
     ) %>%
     select(
       occupation_title,
       isco_group,
+      beta_eloundou,
       ai_product_exposure_score,
-      beta_eloundou
+      ai_product_automation_score,
+      ai_product_augmentation_score
     ) %>%
-    arrange(ai_product_exposure_score)
+    arrange(desc(ai_product_exposure_score))
 )
 
 vs_webb_plot <- scored_occupations_matched %>%
@@ -943,7 +1067,7 @@ vs_webb_plot <- scored_occupations_matched %>%
   ) +
   # add gray dashed lines at x = 0 and y = 0
   geom_vline(xintercept = 50, linetype = "dashed", color = "gray") +
-  geom_hline(yintercept = ai_product_exposure_mean, linetype = "dashed", color = "gray") +
+  geom_hline(yintercept = ai_product_score_means$exposure, linetype = "dashed", color = "gray") +
   theme_minimal() +
   theme(text = element_text(family = "merriweather"))
 
@@ -962,7 +1086,7 @@ vs_webb_plot_grouped <- scored_groups_matched %>%
   ) +
   # add gray dashed lines at x = 0 and y = 0
   geom_vline(xintercept = 50, linetype = "dashed", color = "gray") +
-  geom_hline(yintercept = ai_product_exposure_mean, linetype = "dashed", color = "gray") +
+  geom_hline(yintercept = ai_product_score_means$exposure, linetype = "dashed", color = "gray") +
   theme_minimal() +
   theme(text = element_text(family = "merriweather"))
 
@@ -972,7 +1096,7 @@ list(
   high_webb_low_product_exposure_groups = scored_groups_matched %>%
     filter(
       webb_exposure_score > 50,
-      ai_product_exposure_score < ai_product_exposure_mean
+      ai_product_exposure_score < ai_product_score_means$exposure
     ) %>%
     select(
       isco_3digit,
@@ -984,7 +1108,7 @@ list(
   low_webb_high_product_exposure_groups = scored_groups_matched %>%
     filter(
       webb_exposure_score < 50,
-      ai_product_exposure_score > ai_product_exposure_mean
+      ai_product_exposure_score > ai_product_score_means$exposure
     ) %>%
     select(
       isco_3digit,
@@ -997,7 +1121,7 @@ list(
   high_webb_low_product_exposure = scored_occupations_matched %>%
     filter(
       webb_exposure_score > 50,
-      ai_product_exposure_score < ai_product_exposure_mean
+      ai_product_exposure_score < ai_product_score_means$exposure
     ) %>%
     select(
       occupation_title,
@@ -1009,7 +1133,7 @@ list(
   low_webb_high_product_exposure = scored_occupations_matched %>%
     filter(
       webb_exposure_score < 50,
-      ai_product_exposure_score > ai_product_exposure_mean
+      ai_product_exposure_score > ai_product_score_means$exposure
     ) %>%
     select(
       occupation_title,
