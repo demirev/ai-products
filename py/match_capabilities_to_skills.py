@@ -242,6 +242,14 @@ if __name__ == "__main__":
   automation_releases = [sr for sr in scored_releases if sr["document_type"] != "Not Relevant" and sr["intent_type"] in automation_intents]
   print(f"Automation releases: {len(automation_releases)}") 
   # 3975
+  print(f"End-to-End Processing releases: {len([sr for sr in scored_releases if sr['intent_type'] == 'End-to-End Processing'])}")
+  # 2271
+  print(f"Replacement Messaging releases: {len([sr for sr in scored_releases if sr['intent_type'] == 'Replacement Messaging'])}")
+  # 1539
+  print(f"Self-Correction Mechanisms releases: {len([sr for sr in scored_releases if sr['intent_type'] == 'Self-Correction Mechanisms'])}")
+  # 35
+  print(f"Volume/Scale Emphasis releases: {len([sr for sr in scored_releases if sr['intent_type'] == 'Volume/Scale Emphasis'])}")
+  # 142
   augmentation_intents = [
     "Expert Amplification", 
     "Human-in-the-Loop Design", 
@@ -250,13 +258,26 @@ if __name__ == "__main__":
   augmentation_releases = [sr for sr in scored_releases if sr["document_type"] != "Not Relevant" and sr["intent_type"] in augmentation_intents]
   print(f"Augmentation releases: {len(augmentation_releases)}") 
   # 3673
+  print(f"Expert Amplification releases: {len([sr for sr in scored_releases if sr['intent_type'] == 'Expert Amplification'])}")
+  # 1294
+  print(f"Human-in-the-Loop Design releases: {len([sr for sr in scored_releases if sr['intent_type'] == 'Human-in-the-Loop Design'])}")
+  # 1269
+  print(f"Insight Generation releases: {len([sr for sr in scored_releases if sr['intent_type'] == 'Insight Generation'])}")
+  # 1109
   company_releases = [sr for sr in scored_releases if sr["document_type"] == "AI Product Launch Announcement" or sr["document_type"] == "AI Product Adoption Announcement"]
   print(f"Company releases: {len(company_releases)}")
   # 5973
+  print(f"AI Product Launch Announcement releases: {len([sr for sr in scored_releases if sr['document_type'] == 'AI Product Launch Announcement'])}")
+  # 4933
+  print(f"AI Product Adoption Announcement releases: {len([sr for sr in scored_releases if sr['document_type'] == 'AI Product Adoption Announcement'])}")
+  # 1040
   report_releases = [sr for sr in scored_releases if sr["document_type"] == "AI Product Market Report" or sr["document_type"] == "AI Product News"]
   print(f"Report releases: {len(report_releases)}")
   # 2419
-  
+  print(f"AI Product News releases: {len([sr for sr in scored_releases if sr['document_type'] == 'AI Product News'])}")
+  # 2129
+  print(f"AI Product Market Report releases: {len([sr for sr in scored_releases if sr['document_type'] == 'AI Product Market Report'])}")
+  # 290
 
   # only populated capabilities
   total_capabilities, all_release_idxs = pull_all_capabilities(scored_releases)

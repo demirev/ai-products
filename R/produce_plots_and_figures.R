@@ -122,7 +122,8 @@ scored_releases <- scored_releases %>%
 
 relevant_releases <- scored_releases %>%
   filter(
-    document_type != "Not Relevant"
+    document_type != "Not Relevant" & capability_string != "[]" &
+      capability_string != ""
   ) 
 
 relevant_releases %>% pull(header) %>% sample(5)
@@ -183,14 +184,14 @@ table(all_capabilities) %>%
 mean(scored_skills$mean_similarity)
 
 quantile(scored_skills$n_similar_l3, seq(0,1,0.01))
-sum(scored_skills$n_similar_l3)
+sum(scored_skills$n_similar_l3) # 5539
 sum(scored_skills$n_similar_l3 >= 10) # 115
 sum(scored_skills$n_similar_l3 >= 20) # 30
 
 mean(scored_skills$n_similar_l3) # 0.5114025
 mean(scored_skills$n_similar_l3 > 0) # 0.1577878
 sum(scored_skills$n_similar_l3 > 0) # 1709
-mean(scored_skills$n_similar_l3 >= 2)
+mean(scored_skills$n_similar_l3 >= 2) # 0.07580094
 mean(scored_skills$n_similar_l3 >= 3) # 0.04994922
 sum(scored_skills$n_similar_l3 >= 3) # 541
 
@@ -267,7 +268,7 @@ scored_skills %>%
   ) %>%
   filter(perc_automation > 0.66) %>%
   #filter(n_similar_l3_automation_intent > n_similar_l3_augmentation_intent) %>%
-  print(n = 15)
+  print(n = 10)
 
 scored_skills %>%
   arrange(desc(n_similar_l3_augmentation_intent)) %>%
@@ -282,16 +283,24 @@ scored_skills %>%
   ) %>%
   filter(perc_augmentation > 0.66) %>%
   #filter(n_similar_l3_automation_intent < n_similar_l3_augmentation_intent) %>%
-  print(n = 15)
-  
+  print(n = 10)
+
+sum(scored_skills$n_similar_l3 == 0) # 9122 84.2%
+sum(scored_skills$n_similar_l3 == 1) # 888 8.2%
+sum(scored_skills$n_similar_l3 == 2) # 280 2.6%
+sum(scored_skills$n_similar_l3 == 3) # 143 1.3%
+sum(scored_skills$n_similar_l3 == 4) # 113 1.0%
+sum(scored_skills$n_similar_l3 == 5) # 56 0.5%
+sum(scored_skills$n_similar_l3 >= 6) # 229 2.1%
+
 ## grouped -------------------------------------------------------------------
 scored_skill_groups %>%
   group_by(skill_group_level_1 = supergroup_label) %>%
   summarise(
     n_skills = n()
     , ave_n_similar_l3 = mean(n_similar_l3)
-    , ave_n_similar_l3_automation_intent = mean(n_similar_l3_automation_intent)
-    , ave_n_similar_l3_augmentation_intent = mean(n_similar_l3_augmentation_intent)
+    , ave_perc_automation_intent = mean(n_similar_l3_automation_intent / n_similar_l3, na.rm = TRUE)
+    , ave_perc_augmentation_intent = mean(n_similar_l3_augmentation_intent / n_similar_l3, na.rm = TRUE)
     #, ave_n_similar_l3_company_source = mean(n_similar_l3_company_source)
     #, ave_n_similar_l3_report_source = mean(n_similar_l3_report_source)
   ) %>%
@@ -303,8 +312,8 @@ scored_skill_groups %>%
   summarise(
     n_skills = n()
     , ave_n_similar_l3 = mean(n_similar_l3)
-    , ave_n_similar_l3_automation_intent = mean(n_similar_l3_automation_intent)
-    , ave_n_similar_l3_augmentation_intent = mean(n_similar_l3_augmentation_intent)
+    , ave_perc_automation_intent = mean(n_similar_l3_automation_intent / n_similar_l3, na.rm = TRUE)
+    , ave_perc_augmentation_intent = mean(n_similar_l3_augmentation_intent / n_similar_l3, na.rm = TRUE)
     #, ave_n_similar_l3_company_source = mean(n_similar_l3_company_source)
     #, ave_n_similar_l3_report_source = mean(n_similar_l3_report_source)
   ) %>%
@@ -381,7 +390,7 @@ filter(cumul_exposure, ai_product_exposure_score < 0.30)$cump[1] # 91.18%
 filter(cumul_exposure, ai_product_exposure_score < 0.40)$cump[1] # 97.27%
 filter(cumul_exposure, ai_product_exposure_score < 0.50)$cump[1] # 98.83%
 
-cumul_exposure %>%
+cumul_exposure_plot <- cumul_exposure %>%
   ggplot(
     aes(y  = ai_product_exposure_score, x = cump)
   ) +
@@ -527,6 +536,7 @@ occupation_scores_level_2_plot <- scored_occupations_with_group_labels %>%
 occupation_scores_level_2_table <- scored_occupations_with_group_labels %>%
   group_by(isco_level_2, isco_level_2_label) %>%
   summarize(group_mean = mean(ai_product_exposure_score)) %>%
+  arrange(desc(group_mean)) %>%
   ungroup() %>%
   print(n = Inf)
 
@@ -629,4 +639,10 @@ ggsave(
   height = 5
 )
 
+ggsave(
+  file.path(args$output_dir, "plots", "cumul_job_exposure.eps"),
+  cumul_exposure_plot,
+  width = 9,
+  height = 7
+)
 

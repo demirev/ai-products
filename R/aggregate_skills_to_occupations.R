@@ -618,6 +618,22 @@ for (dc in discrete_cutoffs) {
     print()
 }
 
+cor(
+  alt_dc_scores$ai_product_exposure_score_0,
+  alt_dc_scores$ai_product_exposure_score_2,
+  method = "spearman",
+  use = "pairwise.complete.obs"
+) %>%
+  print()
+
+cor(
+  alt_dc_scores$ai_product_exposure_score_10,
+  alt_dc_scores$ai_product_exposure_score_2,
+  method = "spearman",
+  use = "pairwise.complete.obs"
+) %>%
+  print()
+
 alt_dc_scores %>%
   ggplot(
     aes(
@@ -664,7 +680,7 @@ alt_source_scores <- aggregate_score_to_occupation_level(
   esco_occupations,
   final_measure = "exposure_score_p_similar_company",
   remove_extra = T,
-  standardize = F, discrete_cutoff = 0
+  standardize = F, discrete_cutoff = chosen_cutoff
 ) %>%
   select(occupation_uri, occupation_title, ai_product_exposure_score) %>%
   rename(
@@ -677,7 +693,7 @@ alt_source_scores <- aggregate_score_to_occupation_level(
       esco_occupations,
       final_measure = "exposure_score_p_similar_report",
       remove_extra = T,
-      standardize = F, discrete_cutoff = 0
+      standardize = F, discrete_cutoff = chosen_cutoff
     ) %>%
       select(occupation_uri, occupation_title, ai_product_exposure_score) %>%
       rename(
@@ -692,7 +708,7 @@ alt_source_scores_1_0 <- aggregate_score_to_occupation_level(
   esco_occupations,
   final_measure = "exposure_score_p_similar_company",
   remove_extra = T,
-  standardize = F, discrete_cutoff = 1 # to account for company press releases being 2.46 times more frequent
+  standardize = F, discrete_cutoff = chosen_cutoff
 ) %>%
   select(occupation_uri, occupation_title, ai_product_exposure_score) %>%
   rename(
@@ -705,35 +721,7 @@ alt_source_scores_1_0 <- aggregate_score_to_occupation_level(
       esco_occupations,
       final_measure = "exposure_score_p_similar_report",
       remove_extra = T,
-      standardize = F, discrete_cutoff = 0
-    ) %>%
-      select(occupation_uri, occupation_title, ai_product_exposure_score) %>%
-      rename(
-        ai_product_exposure_independent = ai_product_exposure_score
-      ),
-    by = c("occupation_uri", "occupation_title")
-  )
-
-alt_source_scores_1_1 <- aggregate_score_to_occupation_level(
-  scored_skills,
-  esco_occupation_skill_mapping,
-  esco_occupations,
-  final_measure = "exposure_score_p_similar_company",
-  remove_extra = T,
-  standardize = F, discrete_cutoff = 1 # to account for company press releases being 2.46 times more frequent
-) %>%
-  select(occupation_uri, occupation_title, ai_product_exposure_score) %>%
-  rename(
-    ai_product_exposure_company = ai_product_exposure_score
-  ) %>%
-  left_join(
-    aggregate_score_to_occupation_level(
-      scored_skills,
-      esco_occupation_skill_mapping,
-      esco_occupations,
-      final_measure = "exposure_score_p_similar_report",
-      remove_extra = T,
-      standardize = F, discrete_cutoff = 0
+      standardize = F, discrete_cutoff = chosen_cutoff / 2  # to account for company press releases being 2.46 times more frequent
     ) %>%
       select(occupation_uri, occupation_title, ai_product_exposure_score) %>%
       rename(
@@ -745,18 +733,18 @@ alt_source_scores_1_1 <- aggregate_score_to_occupation_level(
 cor(
   alt_source_scores$ai_product_exposure_company,
   alt_source_scores$ai_product_exposure_independent,
-  method = "spearman",
+  method = "pearson",
   use = "pairwise.complete.obs"
 )
 
 summary(
   lm(
-    ai_product_exposure_independent ~ ai_product_exposure_company,
+    scale(ai_product_exposure_independent) ~ scale(ai_product_exposure_company),
     data = alt_source_scores
   )
 )
 
-alt_source_scores %>%
+third_party_alt_plot <- alt_source_scores %>%
   ggplot(
     aes(
       x = ai_product_exposure_company,
@@ -772,10 +760,18 @@ alt_source_scores %>%
     linetype = "dashed"
   ) +
   labs(
-    title = "Correlation between self-reported and independent measures",
-    x = "Self-reported measure",
-    y = "Independent measure"
-  )
+    title = "Correlation between self-reported and third-party press releases",
+    x = "Exposure score - slef-reported releases",
+    y = "Exposure score - independent releases"
+  ) +
+  theme_minimal()
+
+ggsave(
+  file.path(args$output_dir, "plots", "third_party_alt_plot.eps"),
+  third_party_alt_plot,
+  width = 6,
+  height = 4
+)
 
 # examine different final measures ----------------------------------------
 potential_measures <- c(
