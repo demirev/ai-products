@@ -618,6 +618,31 @@ for (dc in discrete_cutoffs) {
     print()
 }
 
+corrplot::corrplot(
+  cor(
+    alt_dc_scores %>%
+      select(starts_with("ai_product_exposure_score_")),
+    method = "spearman",
+    use = "pairwise.complete.obs"
+  ),
+  method = "circle",
+  type = "upper",
+  tl.col = "black",
+  tl.srt = 45,
+  title = "Spearman correlation between different discrete cutoffs",
+  mar = c(0, 0, 1, 0)
+)
+
+for (dc in c(0,discrete_cutoffs)) {
+  cor(
+    alt_dc_scores[[paste0("ai_product_exposure_score_", dc)]],
+    alt_dc_scores %>% select(starts_with("ai_product_exposure_score_")),
+    method = "spearman",
+    use = "pairwise.complete.obs"
+  ) %>%
+    print()
+}
+
 cor(
   alt_dc_scores$ai_product_exposure_score_0,
   alt_dc_scores$ai_product_exposure_score_2,
@@ -652,25 +677,48 @@ alt_dc_scores %>%
 alt_dc_scores %>%
   select(
     occupation_title,
-    main = ai_product_exposure_score_0,
-    alt = ai_product_exposure_score_2,
+    main = ai_product_exposure_score_2,
+    alt = ai_product_exposure_score_0,
   ) %>%
   mutate(
     main_percentile = ecdf(main)(main),
     alt_percentile = ecdf(alt)(alt)
   ) %>%
   filter(
-    main > mean(main) |
-      alt > mean(alt)
+    (main_percentile > 0.75 & alt_percentile <= 0.25) |
+      (alt_percentile > 0.75 & main_percentile <= 0.25) |
+      (alt_percentile > 0.75 & main_percentile <= 0.25) |
+      (main_percentile > 0.75 & alt_percentile <= 0.25)
   ) %>%
   mutate(
     absdiff = abs(main - alt),
-    percdiff = abs(main_percentile - alt_percentile)
+    percdiff = (main_percentile - alt_percentile)
   ) %>%
   arrange(desc(percdiff)) %>%
-  print(n = 50) %>%
-  pull(absdiff) %>%
-  hist()
+  print(n = Inf)
+
+alt_dc_scores %>%
+  select(
+    occupation_title,
+    main = ai_product_exposure_score_2,
+    alt = ai_product_exposure_score_10,
+  ) %>%
+  mutate(
+    main_percentile = ecdf(main)(main),
+    alt_percentile = ecdf(alt)(alt)
+  ) %>%
+  filter(
+    (main_percentile > 0.75 & alt_percentile <= 0.25) |
+      (alt_percentile > 0.75 & main_percentile <= 0.25) |
+      (alt_percentile > 0.75 & main_percentile <= 0.25) |
+      (main_percentile > 0.75 & alt_percentile <= 0.25)
+  ) %>%
+  mutate(
+    absdiff = abs(main - alt),
+    percdiff = (main_percentile - alt_percentile)
+  ) %>%
+  arrange(desc(percdiff)) %>%
+  print(n = Inf)
   
 
 # examine self report vs independent --------------------------------------
@@ -772,6 +820,23 @@ ggsave(
   width = 6,
   height = 4
 )
+
+alt_source_scores %>%
+  select(
+    occupation_title,
+    main = ai_product_exposure_company,
+    alt = ai_product_exposure_independent,
+  ) %>%
+  mutate(
+    main_percentile = ecdf(main)(main),
+    alt_percentile = ecdf(alt)(alt)
+  ) %>%
+  mutate(
+    diff = main - alt,
+    absdiff = abs(main - alt),
+    percdiff = (main_percentile - alt_percentile)
+  ) %>%
+  arrange(desc(diff))
 
 # examine different final measures ----------------------------------------
 potential_measures <- c(

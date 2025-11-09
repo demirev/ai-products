@@ -5,6 +5,7 @@ library(rnaturalearth)
 library(sf)
 library(showtext)
 library(sysfonts)
+library(scales)
 
 # define script arguments -------------------------------------------------
 parser <- ArgumentParser()
@@ -46,6 +47,13 @@ scored_occupations <- read_csv(args$scored_occupations)
 
 # process data ------------------------------------------------------------
 scored_occupations_2digit <- scored_occupations %>%
+  mutate(
+    felten_exposure_percentile = ecdf(felten_exposure_score)(felten_exposure_score),
+    webb_exposure_percentile = ecdf(webb_exposure_score)(webb_exposure_score),
+    eloundou_exposure_percentile = ecdf(beta_eloundou)(beta_eloundou),
+    ai_product_automation_percentile = ecdf(ai_product_automation_score)(ai_product_automation_score),
+    ai_product_augmentation_percentile = ecdf(ai_product_augmentation_score)(ai_product_augmentation_score)
+  ) %>%
   mutate(isco_code = substr(isco_group, 1, 2)) %>%
   group_by(isco_code) %>%
   summarise(
@@ -55,6 +63,12 @@ scored_occupations_2digit <- scored_occupations %>%
     felten_exposure_score = mean(felten_exposure_score, na.rm = T),
     webb_exposure_score = mean(webb_exposure_score, na.rm = T),
     eloundou_exposure_score = mean(beta_eloundou, na.rm = T),
+    ai_product_exposure_percentile = mean(ai_product_exposure_percentile, na.rm = T),
+    ai_product_automation_percentile = mean(ai_product_automation_percentile, na.rm = T),
+    ai_product_augmentation_percentile = mean(ai_product_augmentation_percentile, na.rm = T),
+    felten_exposure_percentile = mean(felten_exposure_percentile, na.rm = T),
+    webb_exposure_percentile = mean(webb_exposure_percentile, na.rm = T),
+    eloundou_exposure_percentile = mean(eloundou_exposure_percentile, na.rm = T)
   )
 
 ses_coefficients <- ses_coefficients %>%
@@ -296,77 +310,219 @@ vs_unemployment_plot_eloundou <- scored_occupations_2digit %>%
   theme_minimal() +
   theme(text = element_text(family = "merriweather"))
 
+automation_augmentation_wages_plot <- scored_occupations_2digit %>% 
+  filter(!is.na(mean_wage_coefficient)) %>% 
+  mutate(wage_perc = ecdf(mean_wage_coefficient)(mean_wage_coefficient)) %>% 
+  mutate(wage_perc = cut(wage_perc, seq(0,1,0.1))) %>% 
+  #mutate(wage_perc = cut(wage_perc, c(0,0.2,0.4,0.6,0.7,0.8,0.9,1))) %>% 
+  group_by(wage_perc) %>% 
+  summarise(
+    #ai_product_exposure_score = mean(ai_product_exposure_score), 
+    augmentation = mean(ai_product_augmentation_score), 
+    automation = mean(ai_product_automation_score), 
+    n = n()
+  ) %>% print(n = Inf) %>% 
+  pivot_longer(
+    cols = c(automation, augmentation),
+    names_to = "score"
+  ) %>%  
+  ggplot(aes(x = wage_perc, y = value, fill = score)) + 
+  geom_bar(stat = "identity", position = "dodge") + 
+  #coord_flip() + 
+  theme_minimal() +
+  scale_y_continuous(labels = scales::percent) +
+  theme(legend.position = "bottom") +
+  labs(
+    y = "% exposed skills",
+    x = "wage percentile",
+    title = "Wage vs AI Exposure by Product Intent"
+  )
+
+scored_occupations_2digit %>% 
+  filter(!is.na(percent_unemployed)) %>% 
+  mutate(wage_perc = ecdf(percent_unemployed)(percent_unemployed)) %>% 
+  mutate(wage_perc = cut(wage_perc, seq(0,1,0.1))) %>% 
+  #mutate(wage_perc = cut(wage_perc, c(0,0.2,0.4,0.6,0.7,0.8,0.9,1))) %>% 
+  group_by(wage_perc) %>% 
+  summarise(
+    ai_product_exposure_score = mean(ai_product_exposure_score), 
+    ai_product_augmentation_score = mean(ai_product_augmentation_score), 
+    ai_product_automation_score = mean(ai_product_automation_score), 
+    n = n()
+  ) %>% print(n = Inf) %>% 
+  pivot_longer(
+    cols = c(ai_product_automation_score, ai_product_augmentation_score)
+  ) %>%  
+  ggplot(aes(x = wage_perc, y = value, fill = name)) + 
+  geom_bar(stat = "identity", position = "dodge") + 
+  #coord_flip() + 
+  theme_minimal() +
+  theme(legend.position = "bottom")
+
+# compute correlations ----------------------------------------------------
 list(
   r_product_exposure_wages = cor.test(
     scored_occupations_2digit$ai_product_exposure_score, 
-    scored_occupations_2digit$mean_wage_coefficient
+    scored_occupations_2digit$mean_wage_coefficient,
+    method = "spearman"
   ),
   r_product_automation_wages = cor.test(
     scored_occupations_2digit$ai_product_automation_score, 
-    scored_occupations_2digit$mean_wage_coefficient
+    scored_occupations_2digit$mean_wage_coefficient,
+    method = "spearman"
   ),
   r_product_augmentation_wages = cor.test(
     scored_occupations_2digit$ai_product_augmentation_score, 
-    scored_occupations_2digit$mean_wage_coefficient
+    scored_occupations_2digit$mean_wage_coefficient,
+    method = "spearman"
   ),
   r_felten_wages = cor.test(
     scored_occupations_2digit$felten_exposure_score, 
-    scored_occupations_2digit$mean_wage_coefficient
+    scored_occupations_2digit$mean_wage_coefficient,
+    method = "spearman"
   ),
   r_webb_wages = cor.test(
     scored_occupations_2digit$webb_exposure_score, 
-    scored_occupations_2digit$mean_wage_coefficient
+    scored_occupations_2digit$mean_wage_coefficient,
+    method = "spearman"
   ),
   r_eloundou_wages = cor.test(
     scored_occupations_2digit$eloundou_exposure_score, 
-    scored_occupations_2digit$mean_wage_coefficient
+    scored_occupations_2digit$mean_wage_coefficient,
+    method = "spearman"
   )
 )
+
+# list(
+#   r_product_exposure_wages = cor.test(
+#     scored_occupations_2digit$ai_product_exposure_percentile, 
+#     scored_occupations_2digit$mean_wage_coefficient,
+#     method = "spearman"
+#   ),
+#   r_product_automation_wages = cor.test(
+#     scored_occupations_2digit$ai_product_automation_percentile, 
+#     scored_occupations_2digit$mean_wage_coefficient,
+#     method = "spearman"
+#   ),
+#   r_product_augmentation_wages = cor.test(
+#     scored_occupations_2digit$ai_product_augmentation_percentile, 
+#     scored_occupations_2digit$mean_wage_coefficient,
+#     method = "spearman"
+#   ),
+#   r_felten_wages = cor.test(
+#     scored_occupations_2digit$felten_exposure_percentile, 
+#     scored_occupations_2digit$mean_wage_coefficient,
+#     method = "spearman"
+#   ),
+#   r_webb_wages = cor.test(
+#     scored_occupations_2digit$webb_exposure_percentile, 
+#     scored_occupations_2digit$mean_wage_coefficient,
+#     method = "spearman"
+#   ),
+#   r_eloundou_wages = cor.test(
+#     scored_occupations_2digit$eloundou_exposure_percentile, 
+#     scored_occupations_2digit$mean_wage_coefficient,
+#     method = "spearman"
+#   )
+# )
 
 list(
   r_product_exposure_unemployment = cor.test(
     scored_occupations_2digit$ai_product_exposure_score, 
-    scored_occupations_2digit$percent_unemployed
+    scored_occupations_2digit$percent_unemployed,
+    method = "spearman"
   ),
   r_product_automation_unemployment = cor.test(
     scored_occupations_2digit$ai_product_automation_score, 
-    scored_occupations_2digit$percent_unemployed
+    scored_occupations_2digit$percent_unemployed,
+    method = "spearman"
   ),
   r_product_augmentation_unemployment = cor.test(
     scored_occupations_2digit$ai_product_augmentation_score, 
-    scored_occupations_2digit$percent_unemployed
+    scored_occupations_2digit$percent_unemployed,
+    method = "spearman"
   ),
   r_felten_unemployment = cor.test(
     scored_occupations_2digit$felten_exposure_score, 
-    scored_occupations_2digit$percent_unemployed
+    scored_occupations_2digit$percent_unemployed,
+    method = "spearman"
   ),
   r_webb_unemployment = cor.test(
     scored_occupations_2digit$webb_exposure_score, 
-    scored_occupations_2digit$percent_unemployed
+    scored_occupations_2digit$percent_unemployed,
+    method = "spearman"
   ),
   r_eloundou_unemployment = cor.test(
     scored_occupations_2digit$eloundou_exposure_score, 
-    scored_occupations_2digit$percent_unemployed
+    scored_occupations_2digit$percent_unemployed,
+    method = "spearman"
   )
 )
+
+# list(
+#   r_product_exposure_unemployment = cor.test(
+#     scored_occupations_2digit$ai_product_exposure_percentile, 
+#     scored_occupations_2digit$percent_unemployed,
+#     method = "spearman"
+#   ),
+#   r_product_automation_unemployment = cor.test(
+#     scored_occupations_2digit$ai_product_automation_percentile, 
+#     scored_occupations_2digit$percent_unemployed,
+#     method = "spearman"
+#   ),
+#   r_product_augmentation_unemployment = cor.test(
+#     scored_occupations_2digit$ai_product_augmentation_percentile, 
+#     scored_occupations_2digit$percent_unemployed,
+#     method = "spearman"
+#   ),
+#   r_felten_unemployment = cor.test(
+#     scored_occupations_2digit$felten_exposure_percentile, 
+#     scored_occupations_2digit$percent_unemployed,
+#     method = "spearman"
+#   ),
+#   r_webb_unemployment = cor.test(
+#     scored_occupations_2digit$webb_exposure_percentile, 
+#     scored_occupations_2digit$percent_unemployed,
+#     method = "spearman"
+#   ),
+#   r_eloundou_unemployment = cor.test(
+#     scored_occupations_2digit$eloundou_exposure_percentile, 
+#     scored_occupations_2digit$percent_unemployed,
+#     method = "spearman"
+#   )
+# ) # percentile and score have slightly different values due to the aggregation to the 2-digit level
 
 # same for employment
 list(
   r_product_exposure_employment = cor.test(
     scored_occupations_2digit$ai_product_exposure_score, 
-    scored_occupations_2digit$total_employment
+    scored_occupations_2digit$total_employment,
+    method = "spearman"
+  ),
+  r_product_automation_unemployment = cor.test(
+    scored_occupations_2digit$ai_product_automation_score, 
+    scored_occupations_2digit$total_employment,
+    method = "spearman"
+  ),
+  r_product_augmentation_unemployment = cor.test(
+    scored_occupations_2digit$ai_product_augmentation_score, 
+    scored_occupations_2digit$total_employment,
+    method = "spearman"
   ),
   r_felten_employment = cor.test(
     scored_occupations_2digit$felten_exposure_score, 
-    scored_occupations_2digit$total_employment
+    scored_occupations_2digit$total_employment,
+    method = "spearman"
   ),
   r_webb_employment = cor.test(
     scored_occupations_2digit$webb_exposure_score, 
-    scored_occupations_2digit$total_employment
+    scored_occupations_2digit$total_employment,
+    method = "spearman"
   ),
   r_eloundou_employment = cor.test(
     scored_occupations_2digit$eloundou_exposure_score, 
-    scored_occupations_2digit$total_employment
+    scored_occupations_2digit$total_employment,
+    method = "spearman"
   )
 )
 
@@ -374,19 +530,33 @@ list(
 list(
   r_product_exposure_women = cor.test(
     scored_occupations_2digit$ai_product_exposure_score, 
-    scored_occupations_2digit$percent_women
+    scored_occupations_2digit$percent_women,
+    method = "spearman"
+  ),
+  r_product_automation_unemployment = cor.test(
+    scored_occupations_2digit$ai_product_automation_score, 
+    scored_occupations_2digit$percent_women,
+    method = "spearman"
+  ),
+  r_product_augmentation_unemployment = cor.test(
+    scored_occupations_2digit$ai_product_augmentation_score, 
+    scored_occupations_2digit$percent_women,
+    method = "spearman"
   ),
   r_felten_women = cor.test(
     scored_occupations_2digit$felten_exposure_score, 
-    scored_occupations_2digit$percent_women
+    scored_occupations_2digit$percent_women,
+    method = "spearman"
   ),
   r_webb_women = cor.test(
     scored_occupations_2digit$webb_exposure_score, 
-    scored_occupations_2digit$percent_women
+    scored_occupations_2digit$percent_women,
+    method = "spearman"
   ),
   r_eloundou_women = cor.test(
     scored_occupations_2digit$eloundou_exposure_score, 
-    scored_occupations_2digit$percent_women
+    scored_occupations_2digit$percent_women,
+    method = "spearman"
   )
 )
 
@@ -464,3 +634,10 @@ ggsave(
   expsure_map, width = 5, height = 5,
   device = cairo_ps
 )
+
+ggsave(
+  file.path(args$output_dir, "plots", "automation_augmentation_wages_plot.eps"), 
+  automation_augmentation_wages_plot, width = 6, height = 4,
+  device = cairo_ps
+)
+
