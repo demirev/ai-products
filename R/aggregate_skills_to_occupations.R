@@ -659,20 +659,28 @@ cor(
 ) %>%
   print()
 
-alt_dc_scores %>%
+cutoff_comp_plot <- alt_dc_scores %>%
   ggplot(
     aes(
       x = ai_product_exposure_score_2,
-      y = ai_product_exposure_score_10
+      y = ai_product_exposure_score_0
     )
   ) +
   geom_point() +
   geom_smooth(method = "lm") +
   labs(
-    title = "Correlation between different discrete cutoffs",
-    x = "Discrete cutoff 0",
-    y = "Discrete cutoff 10"
-  )
+    title = "Correlation between different cutoff number of matched products",
+    x = "cutoff # = 3",
+    y = "cutoff # = 1"
+  ) +
+  theme_minimal()
+
+ggsave(
+  file.path(args$output_dir, "plots", "cutoff_comp_plot.eps"),
+  cutoff_comp_plot,
+  width = 6,
+  height = 4
+)
 
 alt_dc_scores %>%
   select(

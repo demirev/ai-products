@@ -60,6 +60,7 @@ scored_occupations_2digit <- scored_occupations %>%
     ai_product_exposure_score = mean(ai_product_exposure_score, na.rm = T),
     ai_product_augmentation_score = mean(ai_product_augmentation_score, na.rm = T),
     ai_product_automation_score = mean(ai_product_automation_score, na.rm = T),
+    ai_product_third_party_score = mean(ai_product_third_party_score, na.rm = T),
     felten_exposure_score = mean(felten_exposure_score, na.rm = T),
     webb_exposure_score = mean(webb_exposure_score, na.rm = T),
     eloundou_exposure_score = mean(beta_eloundou, na.rm = T),
