@@ -299,6 +299,7 @@ if __name__ == "__main__":
 
   # if no file name is provided, use the default name
   final_file_name = args.file_name if args.file_name else "results/press_releases/processed_press_releases.csv"
+  filtered_final_file_name = args.filtered_file_name if args.filtered_file_name else "results/press_releases/ai_product_press_releases.csv" # the final form of the input data
   filtered_file_name = args.input_file.replace('.csv', '_scored.csv')
   checkpoint_file = args.llm_checkpoint if args.llm_checkpoint else "checkpoints/llm_checkpoint.csv"
 
@@ -364,6 +365,12 @@ if __name__ == "__main__":
       file_name=checkpoint_file
     )
     save_list_to_csv(processed_releases, final_file_name) # save final results
+    
+    # remove entries from processed_releases where document_type is "Not Relevant" or capability_string is "['']"
+    valid_releases = [
+      sr for sr in processed_releases if sr['document_type'] != 'Not Relevant' and sr['capability_string'] != '[]'
+    ]
+    save_list_to_csv(processed_releases, filtered_final_file_name) # save final results
   
   print(datetime.now().strftime("%Y-%m-%d %H:%M:%S"))  
   print("Done")
