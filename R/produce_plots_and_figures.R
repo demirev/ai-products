@@ -637,7 +637,7 @@ ggsave(
   occupation_scores_level_2_plot,
   width = 9,
   height = 7,
-  device = cairo_ps
+  device = svg
 )
 
 ggsave(
