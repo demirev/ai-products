@@ -633,6 +633,14 @@ ggsave(
 )
 
 ggsave(
+  file.path(args$output_dir, "plots", "occupation_scores_level_2_plot.svg"), # for README.md
+  occupation_scores_level_2_plot,
+  width = 9,
+  height = 7,
+  device = cairo_ps
+)
+
+ggsave(
   file.path(args$output_dir, "plots", "occupation_scores_level_1_plot.eps"),
   occupation_scores_level_1_plot,
   width = 9,

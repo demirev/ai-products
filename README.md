@@ -12,9 +12,13 @@ The plot below summarizes the main findings, which put knowledge-heavy and highl
 
 Occupation with high exposure scores tend to be highly paid and with low unemployment rates, suggesting that AI product innovation may be targeted towards tasks for which the required labor is relatively scarce and expensive.
 
-![AI Exposure vs Wage Premium](results/plots/exposure_vs_wage_plot.eps)
+![AI Exposure vs Wage Premium](results/plots/exposure_vs_wage_plot.svg)
 
-![AI Exposure vs Unemployment](results/plots/exposure_vs_unemployment_plot.eps)
+![AI Exposure vs Unemployment](results/plots/exposure_vs_unemployment_plot.svg)
+
+The exposure score is decomposed in two components - *AI Product Automation* and *AI Product Augmentation*. These components are based on the messaging language used in the press release announcing the product - e.g. whether the product is described as replacing human labor or as assisting human labor. In general, higher wage and lower unemployment occupations are relatively more exposed to AI products described as augmenting human labor, while automation exposure is more evenly distributed across the wage and unemployment spectrum.
+
+![Automation and Augmentation](results/plots/automation_augmentation_wages_plot.svg)
 
 The full details about the method and the results, as well as connections to existing literature, as described in the file `main_text.pdf`. Please keep in mind, that this project is a work in progress, and it may undergo slight or even significant changes prior to publication.
 

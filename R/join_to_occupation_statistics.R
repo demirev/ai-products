@@ -604,8 +604,20 @@ ggsave(
   width = 5, height = 5,
   device = cairo_ps
 )
-ggsave(filename = 
+ggsave(
+  file.path(args$output_dir, "plots", "exposure_vs_wage_plot.svg"), 
+  vs_wage_plot, 
+  width = 5, height = 5,
+  device = cairo_ps
+)
+ggsave(
   file.path(args$output_dir, "plots", "exposure_vs_unemployment_plot.eps"), 
+  vs_unemployment_plot, 
+  width = 5, height = 5,
+  device = cairo_ps
+)
+ggsave(
+  file.path(args$output_dir, "plots", "exposure_vs_unemployment_plot.svg"), 
   vs_unemployment_plot, 
   width = 5, height = 5,
   device = cairo_ps
@@ -638,6 +650,11 @@ ggsave(
 
 ggsave(
   file.path(args$output_dir, "plots", "automation_augmentation_wages_plot.eps"), 
+  automation_augmentation_wages_plot, width = 6, height = 4,
+  device = cairo_ps
+)
+ggsave(
+  file.path(args$output_dir, "plots", "automation_augmentation_wages_plot.svg"), 
   automation_augmentation_wages_plot, width = 6, height = 4,
   device = cairo_ps
 )
