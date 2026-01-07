@@ -635,8 +635,8 @@ ggsave(
 ggsave(
   file.path(args$output_dir, "plots", "occupation_scores_level_2_plot.png"), # for README.md
   occupation_scores_level_2_plot,
-  width = 9,
-  height = 7,
+  width = 5,
+  height = 4,
   device = png
 )
 

@@ -607,7 +607,7 @@ ggsave(
 ggsave(
   file.path(args$output_dir, "plots", "exposure_vs_wage_plot.png"), 
   vs_wage_plot, 
-  width = 5, height = 5,
+  width = 2, height = 2,
   device = png
 )
 ggsave(
@@ -619,7 +619,7 @@ ggsave(
 ggsave(
   file.path(args$output_dir, "plots", "exposure_vs_unemployment_plot.png"), 
   vs_unemployment_plot, 
-  width = 5, height = 5,
+  width = 2, height = 2,
   device = png
 )
 ggsave(
@@ -655,7 +655,7 @@ ggsave(
 )
 ggsave(
   file.path(args$output_dir, "plots", "automation_augmentation_wages_plot.png"), 
-  automation_augmentation_wages_plot, width = 6, height = 4,
+  automation_augmentation_wages_plot, width = 3, height = 2,
   device = png
 )
 
