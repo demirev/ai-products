@@ -20,7 +20,28 @@ The exposure score is decomposed in two components - *AI Product Automation* and
 
 ![Automation and Augmentation](results/plots/automation_augmentation_wages_plot.png)
 
-The full details about the method and the results, as well as connections to existing literature, as described in the file `main_text.pdf`. Please keep in mind, that this project is a work in progress, and it may undergo slight or even significant changes prior to publication.
+The full details about the method and the results, as well as connections to existing literature, as described in the file `main_text.pdf`.
+
+## Citation
+
+The paper associated with this project has been published in *Industry and Innovation* (Taylor & Francis, 2026). If you use this code or the derived occupational exposure scores, please cite:
+
+> Demirev, G. (2026). AI product innovation and occupational exposure: automation and augmentation in commercial AI deployments. *Industry and Innovation*, 1–30. https://doi.org/10.1080/13662716.2026.2623903
+
+BibTeX:
+
+```bibtex
+@article{demirev2026aiproduct,
+  author    = {Demirev, Georgi},
+  title     = {AI product innovation and occupational exposure: automation and augmentation in commercial AI deployments},
+  journal   = {Industry and Innovation},
+  year      = {2026},
+  pages     = {1--30},
+  publisher = {Routledge},
+  doi       = {10.1080/13662716.2026.2623903},
+  url       = {https://doi.org/10.1080/13662716.2026.2623903}
+}
+```
 
 ## Reproducability
 
