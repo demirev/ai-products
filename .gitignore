@@ -130,7 +130,14 @@ cython_debug/
 logs/
 
 # Data
-data/
+data/*
+!data/README.md
+!data/soc_crosswalk/
+!data/felten_et_al/
+!data/webb/
+!data/ses2018/
+!data/cedefop/
+data/ses2018/*.ods
 checkpoints/
 
 # Others
