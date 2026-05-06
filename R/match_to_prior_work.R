@@ -44,10 +44,16 @@ parser$add_argument(
   default = "data/esco/ISCOGroups_en.csv"
 )
 parser$add_argument(
-  "--felten_data", 
+  "--felten_data",
   type = "character",
-  help = "Path to Felten et al. data", 
+  help = "Path to Felten et al. data",
   default = "data/felten_et_al/appendix_A.csv"
+)
+parser$add_argument(
+  "--soc_crosswalk",
+  type = "character",
+  help = "Path to BLS SOC 2010 -> 2018 crosswalk (CSV form)",
+  default = "data/soc_crosswalk/soc_2010_to_2018.csv"
 )
 parser$add_argument(
   "--scored_occupations", 
@@ -94,6 +100,32 @@ convert_to_soc <- function(
           collapse = ",, " # unique separator, so that I don't split actual commas in title below
         )
     )
+}
+
+# Remap SOC-2010 codes to SOC-2018 (which is the vintage of the ESCO ↔ O*NET
+# crosswalk and of the O*NET data Eloundou use). Felten and Webb were both
+# published against SOC-2010, so without this remap the entire IT cluster
+# (15-1131..15-1199) silently drops out of the ESCO match.
+#
+# Returns a tibble (original, remapped). Splits multiply rows; codes absent
+# from the BLS crosswalk pass through unchanged. Detail suffixes (".NN") are
+# preserved on output.
+remap_soc_2010_to_2018 <- function(codes, soc_crosswalk) {
+  base <- sub("\\..*$", "", codes)
+  suffix <- ifelse(grepl("\\.", codes), sub("^[^.]*", "", codes), "")
+  tibble(original = codes, base = base, suffix = suffix) %>%
+    left_join(
+      soc_crosswalk %>%
+        select(soc_2010_code, soc_2018_code) %>%
+        distinct(),
+      by = c("base" = "soc_2010_code"),
+      relationship = "many-to-many"
+    ) %>%
+    mutate(
+      remapped = paste0(coalesce(soc_2018_code, base), suffix)
+    ) %>%
+    select(original, remapped) %>%
+    distinct()
 }
 
 match_to_webb <- function(
@@ -663,8 +695,36 @@ esco_crosswalk <- read_csv(args$esco_crosswalk)
 isco_groups <- read_csv(args$isco_groups)
 felten_data <- read_csv(args$felten_data)
 eloundou_data <- read_tsv(args$eloundou_data)
+soc_crosswalk <- read_csv(args$soc_crosswalk)
 
 scored_occupations <- read_csv(args$scored_occupations)
+
+# SOC vintage alignment ---------------------------------------------------
+# Felten and the Webb→O*NET crosswalk are keyed on SOC-2010 codes, while
+# data/esco/onet_esco_crosswalk.csv (and Eloundou) use SOC-2018. Remap the
+# SOC-2010 columns up front so the IT cluster stops being silently dropped
+# downstream. One-to-many splits (e.g. 15-1132 → {15-1252, 15-1253}) become
+# multiple rows; many-to-one merges (e.g. 15-1132 + 15-1133 → 15-1252) are
+# resolved by averaging within the existing group_by steps.
+
+felten_remap <- remap_soc_2010_to_2018(felten_data$soc_code, soc_crosswalk)
+felten_data <- felten_data %>%
+  inner_join(felten_remap, by = c("soc_code" = "original"),
+             relationship = "many-to-many") %>%
+  group_by(soc_code = remapped) %>%
+  summarise(
+    occupation_title = first(occupation_title),
+    aioe = mean(aioe, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+webb_xwalk_remap <- remap_soc_2010_to_2018(webb_crosswalk$onetsoccode, soc_crosswalk)
+webb_crosswalk <- webb_crosswalk %>%
+  inner_join(webb_xwalk_remap, by = c("onetsoccode" = "original"),
+             relationship = "many-to-many") %>%
+  mutate(onetsoccode = remapped) %>%
+  select(-remapped) %>%
+  distinct()
 
 # run ---------------------------------------------------------------------
 scored_occupations_matched <- scored_occupations %>%
