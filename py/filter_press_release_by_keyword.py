@@ -40,25 +40,6 @@ def count_keyphrases(content, keyphrases):
   return sum(found_keyphrases.values())
 
 
-def replace_quotes(text, field_names):
-  """Replace single quotes with double quotes and fix some JSON formatting issues."""
-  # replace all double quotes with single quotes
-  text = re.sub(r'"', "'", text)
-  # bring back double quotes for field names and values
-  for field in field_names:
-    field = re.escape(field)
-    text = re.sub(rf"'{field}'", rf'"{field}"', text)
-    text = re.sub(rf"\"{field}\":\s*'", rf'"{field}": "', text)
-    text = re.sub(rf"',\s*\"{field}\"", rf'", "{field}"', text)
-  # bring back double quotes before last }
-  text = re.sub(r"'\s*}", '"}', text)
-  # replace double escape with single escape
-  text = re.sub(r'\\', '', text)
-  # remove new lines
-  text = re.sub(r'\n', '', text)
-  return text
-
-
 def save_list_to_csv(data, file_path, append=False):
   mode = 'a' if append else 'w'
   with open(file_path, mode=mode, newline='', encoding='utf-8') as file:
@@ -95,13 +76,7 @@ def find_press_releases_with_keyphrases(
           if file_path in existing_press_releases and not overwirte:
             continue
           with open(file_path, 'r', encoding='utf-8') as f:
-            file_content = f.read()
-            #return(file_content)
-            file_content = replace_quotes(
-              file_content, 
-              ['header', 'uploader', 'uploader_link', 'date', 'body']
-            ) # fix some wrongly saved json files
-            data = json.loads(file_content)
+            data = json.load(f)
             # Combine header and body to search for keywords
             content = data.get('header', '') + " " + data.get('body', '')
             if count_keyphrases(content, keyphrases) > 0:

@@ -2,7 +2,7 @@ import os
 import json
 import random
 import argparse
-from filter_press_release_by_keyword import replace_quotes, read_list_from_csv, save_list_to_csv
+from filter_press_release_by_keyword import read_list_from_csv, save_list_to_csv
 from find_relevant_releases_finetune import clean_text
 from datetime import datetime
 from dotenv import load_dotenv
@@ -54,26 +54,14 @@ def read_random_article(articles_path = "data/articles", scored_relaese_path = "
     random_file = random.choice(scored_releases)['file_path']
     
   with open(random_file, 'r', encoding='utf-8') as f:
-    file_content = f.read()
-    #return(file_content)
-    file_content = replace_quotes(
-      file_content, 
-      ['header', 'uploader', 'uploader_link', 'date', 'body']
-    ) # fix some wrongly saved json files
-    data = json.loads(file_content)
+    data = json.load(f)
     content = data.get('header', '') + " " + data.get('body', '')
     return content
 
 
 def read_specific_article(article_path):
   with open(article_path, 'r', encoding='utf-8') as f:
-    file_content = f.read()
-    #return(file_content)
-    file_content = replace_quotes(
-      file_content, 
-      ['header', 'uploader', 'uploader_link', 'date', 'body']
-    ) # fix some wrongly saved json files
-    data = json.loads(file_content)
+    data = json.load(f)
     content = data.get('header', '') + " " + data.get('body', '')
     return content
 

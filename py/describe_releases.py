@@ -1,17 +1,14 @@
 import os
-import ast
 import json
 from datetime import datetime
 from collections import defaultdict
 import statistics
 
-def parse_json_with_single_quotes(file_path):
-    """Parse JSON file that uses single quotes instead of double quotes."""
+def load_article(file_path):
+    """Load an article JSON file, returning None on error."""
     try:
         with open(file_path, 'r', encoding='utf-8') as f:
-            content = f.read()
-        # Use ast.literal_eval to safely parse the single-quoted dictionary
-        return ast.literal_eval(content)
+            return json.load(f)
     except Exception as e:
         print(f"Error parsing {file_path}: {e}")
         return None
@@ -80,7 +77,7 @@ def analyze_press_releases(data_dir):
         # Process each JSON file
         for json_file in json_files:
             file_path = os.path.join(root, json_file)
-            data = parse_json_with_single_quotes(file_path)
+            data = load_article(file_path)
             
             if data is None:
                 continue

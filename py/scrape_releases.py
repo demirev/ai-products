@@ -1,6 +1,7 @@
 import requests
 import os
 import argparse
+import json
 import random
 from datetime import datetime, timedelta
 from bs4 import BeautifulSoup
@@ -72,8 +73,8 @@ def scrape_and_save_articles(
       continue
     # remove .html from article_link
     file_name = f"{output_dir}/{article_link.split('/')[-1].split('.')[0]}.json"
-    with open(file_name, "w") as file:
-      file.write(str(article))
+    with open(file_name, "w", encoding="utf-8") as file:
+      json.dump(article, file, ensure_ascii=False)
   return True
 
 def scrape_article(link, prefix = "https://www.prnewswire.com"):
@@ -143,11 +144,19 @@ def scrape_category_links_period(
   this_date = start_date
   while this_date <= end_date:
     date_str = this_date.strftime("%Y-%m-%d")
+    existing_file = f"{output_dir}/links_{date_str.split('-')}.txt" if output_dir is not None else None
+    if existing_file is not None and os.path.exists(existing_file):
+      print(f"Skipping {date_str} for {category}: already scraped")
+      with open(existing_file, "r") as file:
+        hrefs = hrefs + [line.strip() for line in file.readlines() if line.strip()]
+      hrefs = list(set(hrefs))
+      this_date += timedelta(days=1)
+      continue
     # try to scrape links for this date, if not possible, skip
     try:
       new_hrefs = scrape_category_links_day(
-        category=category, 
-        base_url=base_url, 
+        category=category,
+        base_url=base_url,
         date=date_str,
         output_dir=output_dir
       )
@@ -178,7 +187,7 @@ def scrape_category_links_day(
     page_url = url + f"&page={page_no}&pagesize=100"
     print(f"Getting all links for {page_url}")
     hrefs = hrefs + scrape_links_on_page(page_url)
-  
+
   hrefs = list(set(hrefs)) # remove duplicates
 
   if output_dir is not None:
